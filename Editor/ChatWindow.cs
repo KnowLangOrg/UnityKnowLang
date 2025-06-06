@@ -12,13 +12,17 @@ namespace UnityKnowLang.Editor
         [SerializeField] private List<ChatMessage> chatHistory = new List<ChatMessage>();
         [SerializeField] private bool serviceConnected = false;
         [SerializeField] private string serviceStatus = "Disconnected";
+        [SerializeField] private string currentQuery = "";
         
         private ScrollView chatScrollView;
         private TextField messageInput;
         private Button sendButton;
         private Label statusLabel;
+        private Button connectionButton;
         private VisualElement chatContainer;
         private PythonServiceManager serviceManager;
+        private ServiceClient serviceClient;
+        private ServiceStatusIndicator statusIndicator;
         
         [MenuItem("Window/UnityKnowLang/Chat Interface")]
         public static void ShowWindow()
@@ -31,8 +35,11 @@ namespace UnityKnowLang.Editor
 
         public void CreateGUI()
         {
-            // Initialize service manager
-            serviceManager = new PythonServiceManager();
+            // Initialize service manager if not already done
+            if (serviceManager == null)
+            {
+                InitializeServiceManager();
+            }
             
             // Create main container
             var mainContainer = new VisualElement();
@@ -48,11 +55,15 @@ namespace UnityKnowLang.Editor
             // Create input area
             CreateInputArea(mainContainer);
             
-            // Initialize service connection
-            InitializeService();
-            
             // Restore chat history
             RestoreChatHistory();
+            
+            // Auto-start service if configured
+            var settings = KnowLangSettings.LoadSettings();
+            if (settings.autoStartService && !serviceManager.IsRunning)
+            {
+                _ = StartServiceAsync();
+            }
         }
         
         private void CreateHeader(VisualElement parent)
@@ -66,11 +77,11 @@ namespace UnityKnowLang.Editor
             header.style.borderBottomWidth = 1;
             header.style.borderBottomColor = Color.gray;
             
-            // Service status
-            statusLabel = new Label($"Status: {serviceStatus}");
-            statusLabel.style.flexGrow = 1;
-            statusLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-            header.Add(statusLabel);
+            // Service status indicator (replaces simple status label)
+            statusIndicator = new ServiceStatusIndicator();
+            statusIndicator.SetServiceManager(serviceManager);
+            statusIndicator.style.flexGrow = 1;
+            header.Add(statusIndicator);
             
             // Settings button
             var settingsButton = new Button(() => SettingsWindow.ShowWindow())
@@ -81,7 +92,7 @@ namespace UnityKnowLang.Editor
             header.Add(settingsButton);
             
             // Connect/Disconnect button
-            var connectionButton = new Button(ToggleConnection)
+            connectionButton = new Button(ToggleConnection)
             {
                 text = serviceConnected ? "Disconnect" : "Connect"
             };
@@ -115,6 +126,9 @@ namespace UnityKnowLang.Editor
             var inputContainer = new VisualElement();
             inputContainer.style.flexDirection = FlexDirection.Row;
             inputContainer.style.minHeight = 60;
+            inputContainer.style.marginTop = 10;
+            inputContainer.style.paddingLeft = 10;
+            inputContainer.style.paddingRight = 10;
             
             // Message input field
             messageInput = new TextField();
@@ -122,6 +136,8 @@ namespace UnityKnowLang.Editor
             messageInput.style.flexGrow = 1;
             messageInput.style.minHeight = 40;
             messageInput.style.marginRight = 10;
+            messageInput.value = currentQuery;
+            messageInput.RegisterValueChangedCallback(evt => currentQuery = evt.newValue);
             
             // Handle Enter key
             messageInput.RegisterCallback<KeyDownEvent>(OnMessageInputKeyDown);
@@ -135,7 +151,7 @@ namespace UnityKnowLang.Editor
             };
             sendButton.style.width = 80;
             sendButton.style.minHeight = 40;
-            sendButton.SetEnabled(serviceConnected);
+            sendButton.SetEnabled(serviceConnected && !string.IsNullOrWhiteSpace(currentQuery));
             
             inputContainer.Add(sendButton);
             
@@ -155,10 +171,11 @@ namespace UnityKnowLang.Editor
         private async void SendMessage()
         {
             string message = messageInput.text.Trim();
-            if (string.IsNullOrEmpty(message) || !serviceConnected)
+            if (string.IsNullOrEmpty(message) || !serviceManager.IsRunning)
                 return;
                 
             // Clear input
+            currentQuery = "";
             messageInput.value = "";
             
             // Add user message to chat
@@ -179,21 +196,43 @@ namespace UnityKnowLang.Editor
             };
             AddChatMessage(thinkingMessage);
             
+            // Disable send button during processing
+            SetSendButtonEnabled(false);
+            
             try
             {
-                // Send to Python service
-                var response = await serviceManager.SendChatMessageAsync(message);
+                // Send streaming request to Python service
+                var requestData = new ChatRequest { query = message };
+                
+                string assistantResponse = "";
+                await serviceClient.PostStreamAsync("api/v1/chat/stream", requestData, (chunk) => {
+                    // Process streaming chunks
+                    assistantResponse += chunk;
+                });
                 
                 // Remove thinking indicator
                 RemoveThinkingMessage();
                 
                 // Add response
-                AddChatMessage(new ChatMessage
+                if (!string.IsNullOrEmpty(assistantResponse))
                 {
-                    content = response,
-                    isUser = false,
-                    timestamp = DateTime.Now
-                });
+                    AddChatMessage(new ChatMessage
+                    {
+                        content = assistantResponse,
+                        isUser = false,
+                        timestamp = DateTime.Now
+                    });
+                }
+                else
+                {
+                    AddChatMessage(new ChatMessage
+                    {
+                        content = "⚠️ No response received from the service.",
+                        isUser = false,
+                        timestamp = DateTime.Now,
+                        isError = true
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -203,11 +242,17 @@ namespace UnityKnowLang.Editor
                 // Add error message
                 AddChatMessage(new ChatMessage
                 {
-                    content = $"Error: {ex.Message}",
+                    content = $"❌ Error: {ex.Message}",
                     isUser = false,
                     timestamp = DateTime.Now,
                     isError = true
                 });
+                
+                Debug.LogError($"Chat error: {ex}");
+            }
+            finally
+            {
+                SetSendButtonEnabled(true);
             }
         }
         
@@ -251,8 +296,16 @@ namespace UnityKnowLang.Editor
             header.style.flexDirection = FlexDirection.Row;
             header.style.marginBottom = 5;
             
-            var senderLabel = new Label(message.isUser ? "You" : "Assistant");
-            senderLabel.style.color = message.isUser ? new Color(0.2f, 0.6f, 1f) : new Color(0.6f, 0.6f, 0.6f);
+            string senderText = message.isUser ? "You" : (message.isSystem ? "System" : "Assistant");
+            var senderLabel = new Label(senderText);
+            
+            if (message.isUser)
+                senderLabel.style.color = new Color(0.2f, 0.6f, 1f);
+            else if (message.isSystem)
+                senderLabel.style.color = new Color(0.8f, 0.8f, 0.2f);
+            else
+                senderLabel.style.color = new Color(0.6f, 0.6f, 0.6f);
+                
             header.Add(senderLabel);
             
             var timestampLabel = new Label(message.timestamp.ToString("HH:mm:ss"));
@@ -270,9 +323,14 @@ namespace UnityKnowLang.Editor
             contentLabel.style.paddingRight = 10;
             contentLabel.style.paddingTop = 5;
             contentLabel.style.paddingBottom = 5;
-            contentLabel.style.backgroundColor = message.isUser ? 
-                new Color(0.2f, 0.3f, 0.4f, 0.3f) : 
-                new Color(0.1f, 0.1f, 0.1f, 0.1f);
+            
+            // Set background colors based on message type
+            if (message.isUser)
+                contentLabel.style.backgroundColor = new Color(0.2f, 0.4f, 0.8f, 0.1f);
+            else if (message.isSystem)
+                contentLabel.style.backgroundColor = new Color(0.8f, 0.8f, 0.2f, 0.1f);
+            else
+                contentLabel.style.backgroundColor = new Color(0.2f, 0.8f, 0.2f, 0.1f);
             
             if (message.isError)
             {
@@ -289,16 +347,42 @@ namespace UnityKnowLang.Editor
             return messageContainer;
         }
         
-        private async void InitializeService()
+        private void InitializeServiceManager()
+        {
+            var settings = KnowLangSettings.LoadSettings();
+            var config = new ServiceConfig
+            {
+                Host = settings.GetServiceHost(),
+                Port = settings.GetServicePort(),
+                AutoStart = settings.autoStartService
+            };
+
+            serviceManager = new PythonServiceManager(config);
+            serviceClient = new ServiceClient(serviceManager.ServiceUrl);
+
+            // Subscribe to service events
+            serviceManager.OnStatusChanged += OnServiceStatusChanged;
+            serviceManager.OnServiceLog += OnServiceLog;
+            serviceManager.OnServiceError += OnServiceError;
+        }
+        
+        private async Task StartServiceAsync()
         {
             try
             {
-                await serviceManager.InitializeAsync();
-                UpdateConnectionStatus(true, "Connected");
+                bool success = await serviceManager.StartServiceAsync();
+                if (success)
+                {
+                    AddSystemMessage("✅ KnowLang service started successfully!");
+                }
+                else
+                {
+                    AddSystemMessage("❌ Failed to start KnowLang service. Please check the console for details.");
+                }
             }
             catch (Exception ex)
             {
-                UpdateConnectionStatus(false, $"Connection failed: {ex.Message}");
+                AddSystemMessage($"❌ Service startup error: {ex.Message}");
             }
         }
         
@@ -306,15 +390,14 @@ namespace UnityKnowLang.Editor
         {
             try
             {
-                if (serviceConnected)
+                if (serviceManager.IsRunning)
                 {
-                    await serviceManager.DisconnectAsync();
+                    serviceManager.StopService();
                     UpdateConnectionStatus(false, "Disconnected");
                 }
                 else
                 {
-                    await serviceManager.ConnectAsync();
-                    UpdateConnectionStatus(true, "Connected");
+                    await StartServiceAsync();
                 }
             }
             catch (Exception ex)
@@ -328,16 +411,59 @@ namespace UnityKnowLang.Editor
             serviceConnected = connected;
             serviceStatus = status;
             
-            if (statusLabel != null)
-                statusLabel.text = $"Status: {serviceStatus}";
-                
-            if (sendButton != null)
-                sendButton.SetEnabled(connected);
+            SetSendButtonEnabled(connected && !string.IsNullOrWhiteSpace(currentQuery));
                 
             // Update connection button text
-            var connectionButton = rootVisualElement.Q<Button>("connectionButton");
             if (connectionButton != null)
                 connectionButton.text = connected ? "Disconnect" : "Connect";
+        }
+        
+        private void SetSendButtonEnabled(bool enabled)
+        {
+            if (sendButton != null)
+                sendButton.SetEnabled(enabled && serviceManager?.IsRunning == true && !string.IsNullOrWhiteSpace(currentQuery));
+        }
+        
+        private void AddSystemMessage(string text)
+        {
+            var message = new ChatMessage
+            {
+                content = text,
+                isUser = false,
+                timestamp = DateTime.Now,
+                isSystem = true
+            };
+            AddChatMessage(message);
+        }
+        
+        private void OnServiceStatusChanged(ServiceStatus status)
+        {
+            bool connected = status == ServiceStatus.Running;
+            UpdateConnectionStatus(connected, status.ToString());
+            
+            // Add status messages to chat
+            switch (status)
+            {
+                case ServiceStatus.Running:
+                    AddSystemMessage("🟢 Service connected and ready");
+                    break;
+                case ServiceStatus.Stopped:
+                    AddSystemMessage("🔴 Service disconnected");
+                    break;
+                case ServiceStatus.Error:
+                    AddSystemMessage("🔴 Service error - check console for details");
+                    break;
+            }
+        }
+        
+        private void OnServiceLog(string message)
+        {
+            Debug.Log($"[KnowLang Service] {message}");
+        }
+        
+        private void OnServiceError(string error)
+        {
+            Debug.LogError($"[KnowLang Service] {error}");
         }
         
         private void RestoreChatHistory()
@@ -355,10 +481,19 @@ namespace UnityKnowLang.Editor
             };
         }
         
-        void OnDisable()
+        void OnDestroy()
         {
             // Clean up when window is closed
             serviceManager?.Dispose();
+        }
+        
+        void OnEnable()
+        {
+            // Restore state after assembly reload
+            if (serviceManager == null)
+            {
+                InitializeServiceManager();
+            }
         }
     }
     
@@ -370,50 +505,12 @@ namespace UnityKnowLang.Editor
         public DateTime timestamp;
         public bool isThinking = false;
         public bool isError = false;
+        public bool isSystem = false;
     }
     
-    // Placeholder service manager - you'll implement the actual HTTP communication
-    public class PythonServiceManager : IDisposable
+    [System.Serializable]
+    public class ChatRequest
     {
-        private bool isConnected = false;
-        
-        public async Task InitializeAsync()
-        {
-            // TODO: Initialize connection to Python service
-            await Task.Delay(1000); // Simulate connection time
-            isConnected = true;
-        }
-        
-        public async Task ConnectAsync()
-        {
-            // TODO: Connect to Python service
-            await Task.Delay(500);
-            isConnected = true;
-        }
-        
-        public async Task DisconnectAsync()
-        {
-            // TODO: Disconnect from Python service
-            await Task.Delay(200);
-            isConnected = false;
-        }
-        
-        public async Task<string> SendChatMessageAsync(string message)
-        {
-            if (!isConnected)
-                throw new Exception("Service not connected");
-                
-            // TODO: Send HTTP request to Python FastAPI service
-            await Task.Delay(1000); // Simulate processing time
-            
-            // Placeholder response
-            return $"Python service received: '{message}'. This is a placeholder response that you'll replace with actual API communication.";
-        }
-        
-        public void Dispose()
-        {
-            // TODO: Clean up resources
-            isConnected = false;
-        }
+        public string query;
     }
 }
