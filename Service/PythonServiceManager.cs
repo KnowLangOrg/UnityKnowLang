@@ -226,7 +226,7 @@ namespace UnityKnowLang.Editor
             string platform = GetPlatformFolder();
             string executableName = GetExecutableName();
             
-            string streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, "KnowLang", "PythonService", platform, executableName);
+            string streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, "KnowLang", platform, executableName);
             
             if (File.Exists(streamingAssetsPath))
             {
@@ -235,7 +235,7 @@ namespace UnityKnowLang.Editor
 
             // Fallback: check if we're in development mode
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", "StreamingAssets", "KnowLang", "PythonService", platform, executableName);
+            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", "StreamingAssets", "KnowLang", platform, executableName);
             
             if (File.Exists(devPath))
             {
