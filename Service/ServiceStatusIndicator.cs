@@ -17,19 +17,19 @@ namespace UnityKnowLang.Editor
         {
             // Create the UI structure
             style.flexDirection = FlexDirection.Row;
-            style.alignItems = Align.Center;
-            style.marginBottom = 5;
+            style.justifyContent = Justify.Center;
+            style.height = 30;
 
             // Status dot
             statusDot = new VisualElement();
             statusDot.style.width = 12;
             statusDot.style.height = 12;
-            statusDot.style.marginRight = 5;
             Add(statusDot);
 
             // Status label
             statusLabel = new Label("Service Stopped");
             statusLabel.style.flexGrow = 1;
+            statusLabel.style.height = 30;
             Add(statusLabel);
 
             // Action button
@@ -37,7 +37,8 @@ namespace UnityKnowLang.Editor
             {
                 text = "Start"
             };
-            actionButton.style.width = 60;
+            actionButton.style.width = 100;
+            actionButton.style.height = 30;
             Add(actionButton);
 
             UpdateDisplay(ServiceStatus.Stopped);

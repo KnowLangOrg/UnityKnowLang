@@ -24,9 +24,7 @@ namespace UnityKnowLang.Editor
 
         #region Properties
         public ServiceStatus Status { get; private set; } = ServiceStatus.Stopped;
-        public string ServiceUrl => $"http://{Host}:{Port}";
-        public string Host { get; private set; } = "127.0.0.1";
-        public int Port { get; private set; } = 8001;
+        public string ServiceUrl => $"http://{config.Host}:{config.Port}{config.ApiPrefix}";
         public bool IsRunning => Status == ServiceStatus.Running;
         #endregion
 
@@ -41,8 +39,6 @@ namespace UnityKnowLang.Editor
         public PythonServiceManager(ServiceConfig config = null)
         {
             this.config = config ?? new ServiceConfig();
-            this.Host = this.config.Host;
-            this.Port = this.config.Port;
             
             // Subscribe to Unity events
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
@@ -235,7 +231,8 @@ namespace UnityKnowLang.Editor
 
             // Fallback: check if we're in development mode
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", "StreamingAssets", "KnowLang", platform, executableName);
+            // prefix the . so that Unity can ignore it
+            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", ".StreamingAssets", "KnowLang", platform, executableName);
             
             if (File.Exists(devPath))
             {
@@ -253,16 +250,13 @@ namespace UnityKnowLang.Editor
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = executablePath,
-                    Arguments = $"--host {Host} --port {Port}",
+                    Arguments = "",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     WorkingDirectory = Path.GetDirectoryName(executablePath)
                 };
-
-                // Set environment variables if needed
-                startInfo.EnvironmentVariables["KNOWLANG_UNITY_MODE"] = "true";
 
                 pythonProcess = new Process { StartInfo = startInfo };
                 
@@ -307,13 +301,13 @@ namespace UnityKnowLang.Editor
         private string GetExecutableName()
         {
             #if UNITY_EDITOR_WIN
-                return "knowlang-unity-service.exe";
+                return "main.exe";
             #elif UNITY_EDITOR_OSX
-                return "knowlang-unity-service";
+                return "main";
             #elif UNITY_EDITOR_LINUX
-                return "knowlang-unity-service";
+                return "main";
             #else
-                return "knowlang-unity-service";
+                return "main";
             #endif
         }
         #endregion
@@ -381,7 +375,8 @@ namespace UnityKnowLang.Editor
     public class ServiceConfig
     {
         public string Host = "127.0.0.1";
-        public int Port = 8001;
+        public int Port = 8080;
+        public string ApiPrefix = "/api/v1";
         public bool AutoStart = true;
         public bool RestartOnPlayMode = false;
         public int HealthCheckInterval = 30; // seconds

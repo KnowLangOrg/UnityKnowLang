@@ -65,41 +65,45 @@ namespace UnityKnowLang.Editor
                 _ = StartServiceAsync();
             }
         }
-        
+
         private void CreateHeader(VisualElement parent)
         {
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
+            header.style.justifyContent = Justify.Center;
+            header.style.height = 60;
             header.style.paddingBottom = 10;
             header.style.paddingTop = 10;
             header.style.paddingLeft = 10;
             header.style.paddingRight = 10;
             header.style.borderBottomWidth = 1;
-            header.style.borderBottomColor = Color.gray;
-            
+            header.style.borderBottomColor = Color.red;
+
             // Service status indicator (replaces simple status label)
             statusIndicator = new ServiceStatusIndicator();
             statusIndicator.SetServiceManager(serviceManager);
             statusIndicator.style.flexGrow = 1;
             header.Add(statusIndicator);
-            
+
             // Settings button
             var settingsButton = new Button(() => SettingsWindow.ShowWindow())
             {
                 text = "Settings"
             };
-            settingsButton.style.width = 80;
+            settingsButton.style.width = 100;
+            settingsButton.style.height = 30;
             header.Add(settingsButton);
-            
+
             // Connect/Disconnect button
             connectionButton = new Button(ToggleConnection)
             {
                 text = serviceConnected ? "Disconnect" : "Connect"
             };
+            connectionButton.style.height = 30;
             connectionButton.style.width = 100;
             connectionButton.style.marginLeft = 5;
             header.Add(connectionButton);
-            
+
             parent.Add(header);
         }
         

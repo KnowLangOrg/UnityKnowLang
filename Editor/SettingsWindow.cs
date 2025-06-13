@@ -565,12 +565,12 @@ namespace UnityKnowLang.Editor
     {
         [Header("Service Configuration")]
         public string serviceHost = "127.0.0.1";
-        public int servicePort = 8001;
+        public int servicePort = 8080;
         public bool autoStartService = true;
         public string configFilePath = "";
         
         [Header("Connection Settings")]
-        public string backendUrl = "http://127.0.0.1:8001";
+        public string backendUrl = "http://127.0.0.1:8080";
         public int timeoutSeconds = 30;
         
         [Header("Service Settings")]
@@ -591,7 +591,7 @@ namespace UnityKnowLang.Editor
         
         // Helper methods
         public string GetServiceHost() => string.IsNullOrEmpty(serviceHost) ? "127.0.0.1" : serviceHost;
-        public int GetServicePort() => servicePort <= 0 ? 8001 : servicePort;
+        public int GetServicePort() =>  servicePort;
         
         private const string SETTINGS_KEY = "UnityKnowLangSettings";
         private static readonly string SettingsPath = "ProjectSettings/KnowLangSettings.json";
