@@ -15,7 +15,7 @@ using System.Text.Json.Serialization;
 namespace Org.OpenAPITools.Client
 {
     /// <summary>
-    /// Formatter for 'date-time' openapi formats ss defined by full-date - RFC3339
+    /// Formatter for 'date' and 'date-time' openapi formats ss defined by full-date - RFC3339
     /// see https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.0.md#data-types
     /// </summary>
     public class DateTimeJsonConverter : JsonConverter<DateTime>
@@ -32,6 +32,7 @@ namespace Org.OpenAPITools.Client
             "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'ffK",
             "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fK",
             "yyyy'-'MM'-'dd'T'HH':'mm':'ssK",
+            "yyyy'-'MM'-'dd",
             "yyyyMMddTHHmmss.fffffffK",
             "yyyyMMddTHHmmss.ffffffK",
             "yyyyMMddTHHmmss.fffffK",
@@ -40,6 +41,7 @@ namespace Org.OpenAPITools.Client
             "yyyyMMddTHHmmss.ffK",
             "yyyyMMddTHHmmss.fK",
             "yyyyMMddTHHmmssK",
+            "yyyyMMdd"
 
         };
 
@@ -54,7 +56,7 @@ namespace Org.OpenAPITools.Client
             if (reader.TokenType == JsonTokenType.Null)
                 throw new NotSupportedException();
 
-            string value = reader.GetString()!;
+            string value = reader.GetString();
 
             foreach(string format in Formats)
                 if (DateTime.TryParseExact(value, format, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out DateTime result))

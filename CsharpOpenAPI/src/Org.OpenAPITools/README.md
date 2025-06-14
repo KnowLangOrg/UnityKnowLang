@@ -6,9 +6,9 @@
 ```ps1
 $properties = @(
     'apiName=Api',
-    'targetFramework=net9.0',
+    'targetFramework=netstandard2.1',
     'validatable=true',
-    'nullableReferenceTypes=true',
+    'nullableReferenceTypes=',
     'hideGenerationTimestamp=true',
     'packageVersion=1.0.0',
     'packageAuthors=OpenAPI',
@@ -23,8 +23,8 @@ $properties = @(
 $global = @(
     'apiDocs=true',
     'modelDocs=true',
-    'apiTests=true',
-    'modelTests=true'
+    'apiTests=false',
+    'modelTests=false'
 ) -join ","
 
 java -jar "<path>/openapi-generator/modules/openapi-generator-cli/target/openapi-generator-cli.jar" generate `
@@ -130,8 +130,8 @@ Endpoints do not require authorization.
 - apis: omitted for brevity
 - apiDocs: true
 - modelDocs: true
-- apiTests: true
-- modelTests: true
+- apiTests: false
+- modelTests: false
 
 ## [OpenApi Generator Parameters](https://openapi-generator.tech/docs/generators/csharp-netcore)
 - allowUnicodeIdentifiers: 
@@ -149,7 +149,7 @@ Endpoints do not require authorization.
 - modelPropertyNaming: 
 - netCoreProjectFile: false
 - nonPublicApi: false
-- nullableReferenceTypes: true
+- nullableReferenceTypes: 
 - optionalAssemblyInfo: 
 - optionalEmitDefaultValues: false
 - optionalMethodArgument: true
@@ -158,7 +158,7 @@ Endpoints do not require authorization.
 - packageCompany: OpenAPI
 - packageCopyright: No Copyright
 - packageDescription: A library generated from a OpenAPI doc
-- packageGuid: {35E5F871-DBD1-40A9-8E9E-9A40170C3A1E}
+- packageGuid: {225E4945-10FD-47D4-8FFB-B2D74BA9ED72}
 - packageName: Org.OpenAPITools
 - packageTags: 
 - packageTitle: OpenAPI Library
@@ -167,7 +167,7 @@ Endpoints do not require authorization.
 - returnICollection: false
 - sortParamsByRequiredFlag: 
 - sourceFolder: src
-- targetFramework: net9.0
+- targetFramework: netstandard2.1
 - useCollection: false
 - useDateTimeOffset: false
 - useOneOfDiscriminatorLookup: false
