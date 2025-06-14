@@ -18,8 +18,6 @@ namespace UnityKnowLang.Editor
     {
         #region Events
         public event System.Action<ServiceStatus> OnStatusChanged;
-        public event System.Action<string> OnServiceLog;
-        public event System.Action<string> OnServiceError;
         #endregion
 
         #region Properties
@@ -33,6 +31,7 @@ namespace UnityKnowLang.Editor
         private readonly ServiceConfig config;
         private UnityWebRequest healthCheckRequest;
         private bool isDisposed = false;
+        private StreamWriter logFileWriter;
         #endregion
 
         #region Constructor & Disposal
@@ -137,6 +136,10 @@ namespace UnityKnowLang.Editor
                     pythonProcess.Dispose();
                     pythonProcess = null;
                 }
+
+                logFileWriter?.Close();
+                logFileWriter?.Dispose();
+                logFileWriter = null;
 
                 SetStatus(ServiceStatus.Stopped);
                 LogMessage("✅ KnowLang service stopped");
@@ -259,6 +262,9 @@ namespace UnityKnowLang.Editor
                 };
 
                 pythonProcess = new Process { StartInfo = startInfo };
+
+                string logFilePath = Path.Combine(Path.GetDirectoryName(executablePath), "log.txt");
+                logFileWriter = new StreamWriter(logFilePath, append: true) { AutoFlush = true };
                 
                 // Subscribe to output events
                 pythonProcess.OutputDataReceived += (sender, e) => {
@@ -349,14 +355,12 @@ namespace UnityKnowLang.Editor
 
         private void LogMessage(string message)
         {
-            UnityEngine.Debug.Log($"[KnowLang] {message}");
-            OnServiceLog?.Invoke(message);
+            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
         }
 
         private void LogError(string error)
         {
-            UnityEngine.Debug.LogError($"[KnowLang] {error}");
-            OnServiceError?.Invoke(error);
+            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {error}");
         }
         #endregion
     }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 using NativeWebSocket;
+using UnityEditor;
 
 namespace UnityKnowLang.Editor
 {
@@ -63,6 +64,8 @@ namespace UnityKnowLang.Editor
     {
         private readonly string baseUrl;
         private readonly int timeoutSeconds;
+        private WebSocket activeWebSocket;
+        private bool isDispatchingMessages;
 
         public ServiceClient(string baseUrl, int timeoutSeconds = 120)
         {
@@ -135,6 +138,8 @@ namespace UnityKnowLang.Editor
             {
 
                 webSocket = new WebSocket(wsUrl);
+                activeWebSocket = webSocket; // Store the active WebSocket
+                StartMessageDispatching();
                 // Set up event handlers
                 webSocket.OnOpen += () =>
                 {
@@ -256,6 +261,9 @@ namespace UnityKnowLang.Editor
             }
             finally
             {
+                activeWebSocket = null;
+                StopMessageDispatching();
+
                 // Ensure WebSocket is properly closed
                 try
                 {
@@ -270,5 +278,30 @@ namespace UnityKnowLang.Editor
                 }
             }
         }
+
+        #region ActiveWebSocket Management
+        private void StartMessageDispatching()
+        {
+            if (!isDispatchingMessages)
+            {
+                isDispatchingMessages = true;
+                EditorApplication.update += DispatchMessages;
+            }
+        }
+
+        private void StopMessageDispatching()
+        {
+            if (isDispatchingMessages)
+            {
+                isDispatchingMessages = false;
+                EditorApplication.update -= DispatchMessages;
+            }
+        }
+
+        private void DispatchMessages()
+        {
+            activeWebSocket?.DispatchMessageQueue();
+        }
+        #endregion
     }
 }

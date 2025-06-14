@@ -348,8 +348,6 @@ namespace UnityKnowLang.Editor
 
             // Subscribe to service events
             serviceManager.OnStatusChanged += OnServiceStatusChanged;
-            serviceManager.OnServiceLog += OnServiceLog;
-            serviceManager.OnServiceError += OnServiceError;
         }
         
         private async Task StartServiceAsync()
@@ -442,15 +440,6 @@ namespace UnityKnowLang.Editor
             }
         }
         
-        private void OnServiceLog(string message)
-        {
-            Debug.Log($"[KnowLang Service] {message}");
-        }
-        
-        private void OnServiceError(string error)
-        {
-            Debug.LogError($"[KnowLang Service] {error}");
-        }
         
         private void RestoreChatHistory()
         {
