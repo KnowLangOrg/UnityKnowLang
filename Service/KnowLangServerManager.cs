@@ -1,4 +1,4 @@
-// Assets/UnityKnowLang/Editor/Scripts/PythonServiceManager.cs
+// Assets/UnityKnowLang/Editor/Scripts/KnowLangServerManger.cs
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ namespace UnityKnowLang.Editor
     /// <summary>
     /// Manages the lifecycle of the Python FastAPI service for Unity integration
     /// </summary>
-    public class PythonServiceManager : IDisposable
+    public class KnowLangServerManger : IDisposable
     {
         #region Events
         public event System.Action<ServiceStatus> OnStatusChanged;
@@ -36,7 +36,7 @@ namespace UnityKnowLang.Editor
         #endregion
 
         #region Constructor & Disposal
-        public PythonServiceManager(ServiceConfig config = null)
+        public KnowLangServerManger(ServiceConfig config = null)
         {
             this.config = config ?? new ServiceConfig();
             

@@ -11,7 +11,7 @@ namespace UnityKnowLang.Editor
         private readonly Label statusLabel;
         private readonly Button actionButton;
         private readonly VisualElement statusDot;
-        private PythonServiceManager serviceManager;
+        private KnowLangServerManger serviceManager;
 
         public ServiceStatusIndicator()
         {
@@ -44,7 +44,7 @@ namespace UnityKnowLang.Editor
             UpdateDisplay(ServiceStatus.Stopped);
         }
 
-        public void SetServiceManager(PythonServiceManager manager)
+        public void SetServiceManager(KnowLangServerManger manager)
         {
             if (serviceManager != null)
             {

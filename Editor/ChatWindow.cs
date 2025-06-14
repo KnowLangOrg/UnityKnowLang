@@ -20,7 +20,7 @@ namespace UnityKnowLang.Editor
         private Label statusLabel;
         private Button connectionButton;
         private VisualElement chatContainer;
-        private PythonServiceManager serviceManager;
+        private KnowLangServerManger serviceManager;
         private ServiceClient serviceClient;
         private ServiceStatusIndicator statusIndicator;
         
@@ -392,7 +392,7 @@ namespace UnityKnowLang.Editor
                 AutoStart = settings.autoStartService
             };
 
-            serviceManager = new PythonServiceManager(config);
+            serviceManager = new KnowLangServerManger(config);
             serviceClient = new ServiceClient(serviceManager.ServiceUrl);
 
             // Subscribe to service events
