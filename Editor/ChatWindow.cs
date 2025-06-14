@@ -201,17 +201,22 @@ namespace UnityKnowLang.Editor
                 evt.StopPropagation();
             }
         }
+
+        private void OnServerMessageReceived(StreamingChatResult result)
+        {
+
+        }
         
         private async void SendMessage()
         {
             string message = messageInput.text.Trim();
             if (string.IsNullOrEmpty(message) || !serviceManager.IsRunning)
                 return;
-                
+
             // Clear input
             currentQuery = "";
             messageInput.value = "";
-            
+
             // Add user message to chat
             AddChatMessage(new ChatMessage
             {
@@ -219,60 +224,19 @@ namespace UnityKnowLang.Editor
                 isUser = true,
                 timestamp = DateTime.Now
             });
-            
-            // Show thinking indicator
-            var thinkingMessage = new ChatMessage
-            {
-                content = "Thinking...",
-                isUser = false,
-                timestamp = DateTime.Now,
-                isThinking = true
-            };
-            AddChatMessage(thinkingMessage);
-            
+
             // Disable send button during processing
             SetSendButtonEnabled(false);
-            
+
             try
             {
                 // Send streaming request to Python service
                 var requestData = new ChatRequest { query = message };
-                
-                string assistantResponse = "";
-                await serviceClient.PostStreamAsync("api/v1/chat/stream", requestData, (chunk) => {
-                    // Process streaming chunks
-                    assistantResponse += chunk;
-                });
-                
-                // Remove thinking indicator
-                RemoveThinkingMessage();
-                
-                // Add response
-                if (!string.IsNullOrEmpty(assistantResponse))
-                {
-                    AddChatMessage(new ChatMessage
-                    {
-                        content = assistantResponse,
-                        isUser = false,
-                        timestamp = DateTime.Now
-                    });
-                }
-                else
-                {
-                    AddChatMessage(new ChatMessage
-                    {
-                        content = "⚠️ No response received from the service.",
-                        isUser = false,
-                        timestamp = DateTime.Now,
-                        isError = true
-                    });
-                }
+
+                await serviceClient.StreamChatAsync(message, OnServerMessageReceived);
             }
             catch (Exception ex)
             {
-                // Remove thinking indicator
-                RemoveThinkingMessage();
-                
                 // Add error message
                 AddChatMessage(new ChatMessage
                 {
@@ -281,7 +245,7 @@ namespace UnityKnowLang.Editor
                     timestamp = DateTime.Now,
                     isError = true
                 });
-                
+
                 Debug.LogError($"Chat error: {ex}");
             }
             finally
@@ -302,20 +266,6 @@ namespace UnityKnowLang.Editor
             {
                 chatScrollView.scrollOffset = new Vector2(0, chatScrollView.contentContainer.layout.height);
             };
-        }
-        
-        private void RemoveThinkingMessage()
-        {
-            // Remove the last thinking message from history and UI
-            for (int i = chatHistory.Count - 1; i >= 0; i--)
-            {
-                if (chatHistory[i].isThinking)
-                {
-                    chatHistory.RemoveAt(i);
-                    chatContainer.RemoveAt(chatContainer.childCount - 1);
-                    break;
-                }
-            }
         }
         
         private VisualElement CreateMessageElement(ChatMessage message)
