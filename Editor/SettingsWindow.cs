@@ -143,13 +143,6 @@ namespace UnityKnowLang.Editor
             timeoutField.RegisterValueChangedCallback(OnSettingChanged);
             timeoutContainer.Add(timeoutField);
             
-            // Test connection button
-            testConnectionButton = new Button(TestConnection)
-            {
-                text = "Test Connection"
-            };
-            testConnectionButton.style.marginTop = 10;
-            section.Add(testConnectionButton);
         }
         
         private void CreateServiceSection(VisualElement parent)
@@ -400,45 +393,7 @@ namespace UnityKnowLang.Editor
             }
         }
         
-        private async void TestConnection()
-        {
-            testConnectionButton.SetEnabled(false);
-            testConnectionButton.text = "Testing...";
-            connectionStatusLabel.text = "Testing connection...";
-            connectionStatusLabel.style.color = Color.yellow;
-            
-            try
-            {
-                // Update backend URL from current host/port values
-                string testUrl = $"http://{serviceHostField.value}:{servicePortField.value}";
-                
-                // Use actual service client to test connection
-                var testClient = new ServiceClient(testUrl, timeoutField.value);
-                var health = await testClient.GetAsync<HealthResponse>("/health");
-                
-                if (health?.status == "healthy")
-                {
-                    connectionStatusLabel.text = "✅ Connection successful!";
-                    connectionStatusLabel.style.color = Color.green;
-                }
-                else
-                {
-                    connectionStatusLabel.text = "❌ Service responded but status is not healthy";
-                    connectionStatusLabel.style.color = Color.red;
-                }
-            }
-            catch (Exception ex)
-            {
-                connectionStatusLabel.text = $"❌ Connection failed: {ex.Message}";
-                connectionStatusLabel.style.color = Color.red;
-            }
-            finally
-            {
-                testConnectionButton.SetEnabled(true);
-                testConnectionButton.text = "Test Connection";
-            }
-        }
-        
+
         private void BrowsePythonPath()
         {
             string extension = "";
@@ -644,12 +599,5 @@ namespace UnityKnowLang.Editor
                 throw;
             }
         }
-    }
-    
-    [System.Serializable]
-    public class HealthResponse
-    {
-        public string status;
-        public string service;
     }
 }

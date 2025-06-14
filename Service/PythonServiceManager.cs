@@ -177,7 +177,7 @@ namespace UnityKnowLang.Editor
                     if (request.result == UnityWebRequest.Result.Success)
                     {
                         var response = request.downloadHandler.text;
-                        var healthData = JsonUtility.FromJson<HealthResponse>(response);
+                        var healthData = JsonUtility.FromJson<KnowLangHealthResponse>(response);
                         return healthData?.status == "healthy";
                     }
                 }
@@ -383,7 +383,7 @@ namespace UnityKnowLang.Editor
     }
 
     [Serializable]
-    public class HealthResponse
+    public class KnowLangHealthResponse
     {
         public string status;
         public string service;

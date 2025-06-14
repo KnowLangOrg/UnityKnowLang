@@ -33,6 +33,7 @@ namespace UnityKnowLang.Editor
             window.maxSize = new Vector2(1200, 800);
         }
 
+        #region UI Components Creation
         public void CreateGUI()
         {
             // Initialize service manager if not already done
@@ -68,41 +69,68 @@ namespace UnityKnowLang.Editor
 
         private void CreateHeader(VisualElement parent)
         {
+            void HeaderStyling(VisualElement header)
+            {
+                header.style.flexDirection = FlexDirection.Row;
+                header.style.justifyContent = Justify.Center;
+                header.style.height = 60;
+                header.style.paddingBottom = 10;
+                header.style.paddingTop = 10;
+                header.style.paddingLeft = 10;
+                header.style.paddingRight = 10;
+                header.style.borderBottomWidth = 1;
+                header.style.borderBottomColor = Color.gray;
+            }
+            void CreateStatusIndicator(VisualElement header)
+            {
+                statusIndicator = new ServiceStatusIndicator();
+                statusIndicator.SetServiceManager(serviceManager);
+                statusIndicator.style.flexGrow = 1;
+                header.Add(statusIndicator);
+            }
+            void CreateSettingsButton(VisualElement header)
+            {
+                var settingsButton = new Button(() => SettingsWindow.ShowWindow())
+                {
+                    text = "Settings"
+                };
+                settingsButton.style.width = 100;
+                settingsButton.style.height = 30;
+                header.Add(settingsButton);
+            }
+            void CreateConnectionButton(VisualElement header)
+            {
+                connectionButton = new Button(ToggleConnection)
+                {
+                    text = serviceConnected ? "Disconnect" : "Connect"
+                };
+                connectionButton.style.height = 30;
+                connectionButton.style.width = 100;
+                connectionButton.style.marginLeft = 5;
+                header.Add(connectionButton);
+            }
+
+            void CreateClearChatButton(VisualElement header)
+            {
+                var clearChatButton = new Button(() => {
+                    chatHistory.Clear();
+                    chatContainer.Clear();
+                })
+                {
+                    text = "Clear History"
+                };
+                clearChatButton.style.height = 30;
+                clearChatButton.style.width = 100;
+                clearChatButton.style.marginLeft = 5;
+                header.Add(clearChatButton);
+            }
+
             var header = new VisualElement();
-            header.style.flexDirection = FlexDirection.Row;
-            header.style.justifyContent = Justify.Center;
-            header.style.height = 60;
-            header.style.paddingBottom = 10;
-            header.style.paddingTop = 10;
-            header.style.paddingLeft = 10;
-            header.style.paddingRight = 10;
-            header.style.borderBottomWidth = 1;
-            header.style.borderBottomColor = Color.red;
-
-            // Service status indicator (replaces simple status label)
-            statusIndicator = new ServiceStatusIndicator();
-            statusIndicator.SetServiceManager(serviceManager);
-            statusIndicator.style.flexGrow = 1;
-            header.Add(statusIndicator);
-
-            // Settings button
-            var settingsButton = new Button(() => SettingsWindow.ShowWindow())
-            {
-                text = "Settings"
-            };
-            settingsButton.style.width = 100;
-            settingsButton.style.height = 30;
-            header.Add(settingsButton);
-
-            // Connect/Disconnect button
-            connectionButton = new Button(ToggleConnection)
-            {
-                text = serviceConnected ? "Disconnect" : "Connect"
-            };
-            connectionButton.style.height = 30;
-            connectionButton.style.width = 100;
-            connectionButton.style.marginLeft = 5;
-            header.Add(connectionButton);
+            HeaderStyling(header);
+            CreateStatusIndicator(header);
+            CreateSettingsButton(header);
+            CreateConnectionButton(header);
+            CreateClearChatButton(header);
 
             parent.Add(header);
         }
@@ -161,7 +189,9 @@ namespace UnityKnowLang.Editor
             
             parent.Add(inputContainer);
         }
+        #endregion
         
+        #region UI Event Handlers
         private void OnMessageInputKeyDown(KeyDownEvent evt)
         {
             // Send message on Ctrl+Enter or Cmd+Enter
@@ -350,6 +380,7 @@ namespace UnityKnowLang.Editor
             
             return messageContainer;
         }
+        #endregion
         
         private void InitializeServiceManager()
         {
