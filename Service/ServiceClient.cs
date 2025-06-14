@@ -124,7 +124,8 @@ namespace UnityKnowLang.Editor
             CancellationToken cancellationToken = default)
         {
             // Convert HTTP URL to WebSocket URL
-            string wsUrl = $"{baseUrl}/ws/chat/stream";
+            string wsUrl = baseUrl.Replace("http://", "ws://").Replace("https://", "wss://");
+            wsUrl = $"{wsUrl}/ws/chat/stream";
 
             WebSocket webSocket = null;
             TaskCompletionSource<StreamingChatResult> completionSource = new TaskCompletionSource<StreamingChatResult>();
@@ -132,8 +133,8 @@ namespace UnityKnowLang.Editor
 
             try
             {
-                webSocket = new WebSocket(wsUrl);
 
+                webSocket = new WebSocket(wsUrl);
                 // Set up event handlers
                 webSocket.OnOpen += () =>
                 {

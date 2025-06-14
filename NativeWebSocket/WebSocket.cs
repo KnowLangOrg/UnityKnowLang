@@ -1,4 +1,3 @@
-// https://github.com/endel/NativeWebSocket
 using System;
 using System.Collections.Generic;
 using System.IO;

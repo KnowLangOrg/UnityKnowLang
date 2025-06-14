@@ -204,6 +204,7 @@ namespace UnityKnowLang.Editor
 
         private void OnServerMessageReceived(StreamingChatResult result)
         {
+            Debug.Log($"Received message: {result.progress_message}");
 
         }
         
@@ -226,7 +227,7 @@ namespace UnityKnowLang.Editor
             });
 
             // Disable send button during processing
-            SetSendButtonEnabled(false);
+            // SetSendButtonEnabled(false);
 
             try
             {
@@ -378,7 +379,7 @@ namespace UnityKnowLang.Editor
                 if (serviceManager.IsRunning)
                 {
                     serviceManager.StopService();
-                    UpdateConnectionStatus(false, "Disconnected");
+                    // UpdateConnectionStatus(false, "Disconnected");
                 }
                 else
                 {
