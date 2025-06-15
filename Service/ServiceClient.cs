@@ -10,6 +10,21 @@ using UnityEditor;
 
 namespace UnityKnowLang.Editor
 {
+    [System.Serializable]
+    public class CodeContext
+    {
+        public string filePath;
+        public int startLine;
+        public int endLine;
+        public string code;
+        
+        public string GetTitle()
+        {
+            return $"📄 {System.IO.Path.GetFileName(filePath)} (lines {startLine}-{endLine})";
+        }
+    }
+
+
     /// <summary>
     /// Chat status enum matching Python ChatStatus
     /// </summary>
@@ -23,6 +38,38 @@ namespace UnityKnowLang.Editor
         COMPLETE,
         ERROR
     }
+
+    public static class ChatStatusExtensions
+    {
+        public static string ToJsonString(this ChatStatus status)
+        {
+            return status switch
+            {
+                ChatStatus.STARTING => "starting",
+                ChatStatus.POLISHING => "polishing",
+                ChatStatus.RETRIEVING => "retrieving",
+                ChatStatus.ANSWERING => "answering",
+                ChatStatus.COMPLETE => "complete",
+                ChatStatus.ERROR => "error",
+                _ => "unknown"
+            };
+        }
+
+        public static ChatStatus FromJsonString(string statusString)
+        {
+            return statusString?.ToLower() switch
+            {
+                "starting" => ChatStatus.STARTING,
+                "polishing" => ChatStatus.POLISHING,
+                "retrieving" => ChatStatus.RETRIEVING,
+                "answering" => ChatStatus.ANSWERING,
+                "complete" => ChatStatus.COMPLETE,
+                "error" => ChatStatus.ERROR,
+                _ => ChatStatus.ERROR // Default fallback
+            };
+        }
+    }
+
 
     /// <summary>
     /// Search result data structure
@@ -43,8 +90,14 @@ namespace UnityKnowLang.Editor
     {
         public string answer;
         public List<SearchResult> retrieved_context;
-        public ChatStatus status;
+        [SerializeField] private string status = "starting";
+        public ChatStatus ChatStatus
+        {
+            get => ChatStatusExtensions.FromJsonString(status);
+            set => status = value.ToJsonString();
+        }
         public string progress_message;
+
     }
 
     /// <summary>
@@ -164,7 +217,7 @@ namespace UnityKnowLang.Editor
                             onMessageReceived?.Invoke(chatResult);
 
                             // Check if this is the final message
-                            if (chatResult.status == ChatStatus.COMPLETE || chatResult.status == ChatStatus.ERROR)
+                            if (chatResult.ChatStatus == ChatStatus.COMPLETE || chatResult.ChatStatus == ChatStatus.ERROR)
                             {
                                 finalResult = chatResult;
                                 completionSource.SetResult(chatResult);
@@ -177,7 +230,7 @@ namespace UnityKnowLang.Editor
                         var errorResult = new StreamingChatResult
                         {
                             answer = $"Error parsing server response: {ex.Message}",
-                            status = ChatStatus.ERROR,
+                            ChatStatus = ChatStatus.ERROR,
                             progress_message = "Client-side parsing error"
                         };
                         completionSource.SetResult(errorResult);
@@ -190,7 +243,7 @@ namespace UnityKnowLang.Editor
                     var errorResult = new StreamingChatResult
                     {
                         answer = $"WebSocket error: {errorMsg}",
-                        status = ChatStatus.ERROR,
+                        ChatStatus = ChatStatus.ERROR,
                         progress_message = "Connection error"
                     };
                     completionSource.SetResult(errorResult);
@@ -206,7 +259,7 @@ namespace UnityKnowLang.Editor
                         var errorResult = new StreamingChatResult
                         {
                             answer = "Connection closed unexpectedly",
-                            status = ChatStatus.ERROR,
+                            ChatStatus = ChatStatus.ERROR,
                             progress_message = "Connection terminated"
                         };
                         completionSource.SetResult(errorResult);
@@ -255,7 +308,7 @@ namespace UnityKnowLang.Editor
                 return new StreamingChatResult
                 {
                     answer = $"Streaming error: {ex.Message}",
-                    status = ChatStatus.ERROR,
+                    ChatStatus = ChatStatus.ERROR,
                     progress_message = "Client-side error"
                 };
             }
