@@ -3,13 +3,12 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 
 namespace UnityKnowLang.Editor
 {
     public class SettingsWindow : EditorWindow
     {
+        #region Fields
         [SerializeField] private KnowLangSettings settings = new KnowLangSettings();
         
         private TextField serviceHostField;
@@ -17,7 +16,9 @@ namespace UnityKnowLang.Editor
         private Toggle autoStartToggle;
         private Button saveButton;
         private Button resetButton;
-        
+        #endregion
+
+        #region Unity Menu and Window Management
         [MenuItem("Window/UnityKnowLang/Settings")]
         public static void ShowWindow()
         {
@@ -48,7 +49,9 @@ namespace UnityKnowLang.Editor
             // Bind values to UI
             BindSettingsToUI();
         }
-        
+        #endregion
+
+        #region UI Creation Methods
         private void CreateTitle(VisualElement parent)
         {
             var titleLabel = new Label("UnityKnowLang Plugin Settings");
@@ -81,7 +84,6 @@ namespace UnityKnowLang.Editor
             autoStartToggle = new Toggle();
             autoStartToggle.RegisterValueChangedCallback(OnSettingChanged);
             autoStartContainer.Add(autoStartToggle);
-            
         }
         
         private void CreateActionButtons(VisualElement parent)
@@ -122,7 +124,9 @@ namespace UnityKnowLang.Editor
             buttonContainer.Add(rightButtons);
             parent.Add(buttonContainer);
         }
-        
+        #endregion
+
+        #region UI Helper Methods
         private VisualElement CreateSection(string title, VisualElement parent)
         {
             var sectionTitle = new Label(title);
@@ -169,7 +173,9 @@ namespace UnityKnowLang.Editor
             parent.Add(container);
             return container;
         }
-        
+        #endregion
+
+        #region Platform Utility Methods
         private string GetCurrentPlatform()
         {
             #if UNITY_EDITOR_WIN
@@ -195,15 +201,28 @@ namespace UnityKnowLang.Editor
                 return "knowlang-unity-service";
             #endif
         }
-        
-        private void OnSettingChanged<T>(ChangeEvent<T> evt)
-        {
-            // Enable save button when settings change
-            if (saveButton != null)
-                saveButton.SetEnabled(true);
-                
-        }
+        #endregion
 
+        #region Settings Data Binding
+        private void BindSettingsToUI()
+        {
+            if (serviceHostField != null)
+                serviceHostField.value = settings.serviceHost;
+            if (servicePortField != null)
+                servicePortField.value = settings.servicePort;
+            if (autoStartToggle != null)
+                autoStartToggle.value = settings.autoStartService;
+        }
+        
+        private void UpdateSettingsFromUI()
+        {
+            settings.serviceHost = serviceHostField.value;
+            settings.servicePort = servicePortField.value;
+            settings.autoStartService = autoStartToggle.value;
+        }
+        #endregion
+
+        #region Settings Management
         private void SaveSettings()
         {
             // Update settings from UI
@@ -218,33 +237,24 @@ namespace UnityKnowLang.Editor
                 saveButton.SetEnabled(false);
                 
                 Debug.Log("UnityKnowLang settings saved");
+                
+                // Show popup to inform user to restart service
+                EditorUtility.DisplayDialog("Settings Saved", 
+                    "Settings have been saved successfully.\n\nPlease restart the KnowLang service for changes to take effect.", 
+                    "OK");
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Failed to save settings: {ex}");
+                EditorUtility.DisplayDialog("Save Failed", 
+                    $"Failed to save settings:\n{ex.Message}", 
+                    "OK");
             }
         }
         
         private void LoadSettings()
         {
             settings = KnowLangSettings.LoadSettings();
-        }
-        
-        
-        private void BindSettingsToUI()
-        {
-            if (serviceHostField != null)
-                serviceHostField.value = settings.serviceHost;
-            if (servicePortField != null)
-                servicePortField.value = settings.servicePort;
-            if (autoStartToggle != null)
-                autoStartToggle.value = settings.autoStartService;
-        }
-        private void UpdateSettingsFromUI()
-        {
-            settings.serviceHost = serviceHostField.value;
-            settings.servicePort = servicePortField.value;
-            settings.autoStartService = autoStartToggle.value;
         }
         
         private void ResetToDefaults()
@@ -258,7 +268,16 @@ namespace UnityKnowLang.Editor
                 saveButton.SetEnabled(true);
             }
         }
-        
+        #endregion
+
+        #region Event Handlers
+        private void OnSettingChanged<T>(ChangeEvent<T> evt)
+        {
+            // Enable save button when settings change
+            if (saveButton != null)
+                saveButton.SetEnabled(true);
+        }
+
         private void OnSaveClicked()
         {
             SaveSettings();
@@ -268,22 +287,30 @@ namespace UnityKnowLang.Editor
         {
             ResetToDefaults();
         }
+        #endregion
     }
     
     [System.Serializable]
     public class KnowLangSettings
     {
+        #region Settings Properties
         [Header("Service Configuration")]
         public string serviceHost = "127.0.0.1";
         public int servicePort = 8080;
         public bool autoStartService = true;
-        
-        public string GetServiceHost() => string.IsNullOrEmpty(serviceHost) ? "127.0.0.1" : serviceHost;
-        public int GetServicePort() =>  servicePort;
-        
+        #endregion
+
+        #region Constants and Static Fields
         private const string SETTINGS_KEY = "UnityKnowLangSettings";
         private static readonly string SettingsPath = "ProjectSettings/KnowLangSettings.json";
-        
+        #endregion
+
+        #region Public API Methods
+        public string GetServiceHost() => string.IsNullOrEmpty(serviceHost) ? "127.0.0.1" : serviceHost;
+        public int GetServicePort() =>  servicePort;
+        #endregion
+
+        #region Static Settings Management
         public static KnowLangSettings LoadSettings()
         {
             try
@@ -332,5 +359,6 @@ namespace UnityKnowLang.Editor
                 throw;
             }
         }
+        #endregion
     }
 }
