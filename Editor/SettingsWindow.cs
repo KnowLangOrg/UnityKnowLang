@@ -15,20 +15,8 @@ namespace UnityKnowLang.Editor
         private TextField serviceHostField;
         private IntegerField servicePortField;
         private Toggle autoStartToggle;
-        private TextField configPathField;
-        private TextField backendUrlField;
-        private IntegerField timeoutField;
-        private Toggle enableLoggingToggle;
-        private PopupField<string> logLevelPopup;
-        private TextField pythonPathField;
-        private Button browseButton;
-        private Button browseConfigButton;
-        private Button testConnectionButton;
         private Button saveButton;
         private Button resetButton;
-        private Label connectionStatusLabel;
-        private VisualElement advancedSection;
-        private Toggle showAdvancedToggle;
         
         [MenuItem("Window/UnityKnowLang/Settings")]
         public static void ShowWindow()
@@ -41,9 +29,6 @@ namespace UnityKnowLang.Editor
 
         public void CreateGUI()
         {
-            // Load existing settings
-            LoadSettings();
-            
             // Create main container with scroll view
             var scrollView = new ScrollView();
             rootVisualElement.Add(scrollView);
@@ -57,20 +42,8 @@ namespace UnityKnowLang.Editor
             // Create service configuration section
             CreateServiceConfigSection(mainContainer);
             
-            // Create connection settings section
-            CreateConnectionSection(mainContainer);
-            
-            // Create service settings section  
-            CreateServiceSection(mainContainer);
-            
-            // Create advanced settings section
-            CreateAdvancedSection(mainContainer);
-            
             // Create action buttons
             CreateActionButtons(mainContainer);
-            
-            // Create status section
-            CreateStatusSection(mainContainer);
             
             // Bind values to UI
             BindSettingsToUI();
@@ -109,138 +82,6 @@ namespace UnityKnowLang.Editor
             autoStartToggle.RegisterValueChangedCallback(OnSettingChanged);
             autoStartContainer.Add(autoStartToggle);
             
-            // Config file path
-            var configContainer = CreateFieldContainer("Config File:", section);
-            configPathField = new TextField();
-            configPathField.style.flexGrow = 1;
-            configPathField.RegisterValueChangedCallback(OnSettingChanged);
-            configContainer.Add(configPathField);
-            
-            browseConfigButton = new Button(BrowseConfigPath)
-            {
-                text = "Browse"
-            };
-            browseConfigButton.style.width = 80;
-            browseConfigButton.style.marginLeft = 5;
-            configContainer.Add(browseConfigButton);
-        }
-        
-        private void CreateConnectionSection(VisualElement parent)
-        {
-            var section = CreateSection("Connection Settings", parent);
-            
-            // Backend URL (computed from host and port)
-            var urlContainer = CreateFieldContainer("Backend URL:", section);
-            backendUrlField = new TextField();
-            backendUrlField.style.flexGrow = 1;
-            backendUrlField.SetEnabled(false); // Read-only, computed from host:port
-            urlContainer.Add(backendUrlField);
-            
-            // Timeout
-            var timeoutContainer = CreateFieldContainer("Timeout (seconds):", section);
-            timeoutField = new IntegerField();
-            timeoutField.style.width = 100;
-            timeoutField.RegisterValueChangedCallback(OnSettingChanged);
-            timeoutContainer.Add(timeoutField);
-            
-        }
-        
-        private void CreateServiceSection(VisualElement parent)
-        {
-            var section = CreateSection("Service Settings", parent);
-            
-            // Python executable path
-            var pythonPathContainer = CreateFieldContainer("Python Service Path:", section);
-            pythonPathField = new TextField();
-            pythonPathField.style.flexGrow = 1;
-            pythonPathField.RegisterValueChangedCallback(OnSettingChanged);
-            pythonPathContainer.Add(pythonPathField);
-            
-            browseButton = new Button(BrowsePythonPath)
-            {
-                text = "Browse"
-            };
-            browseButton.style.width = 80;
-            browseButton.style.marginLeft = 5;
-            pythonPathContainer.Add(browseButton);
-            
-            // Enable logging
-            var loggingContainer = CreateFieldContainer("Enable Logging:", section);
-            enableLoggingToggle = new Toggle();
-            enableLoggingToggle.RegisterValueChangedCallback(OnSettingChanged);
-            loggingContainer.Add(enableLoggingToggle);
-            
-            // Log level
-            var logLevelContainer = CreateFieldContainer("Log Level:", section);
-            logLevelPopup = new PopupField<string>(new List<string> { "Debug", "Info", "Warning", "Error" }, "Info");
-            logLevelPopup.style.width = 150;
-            logLevelPopup.RegisterValueChangedCallback(OnSettingChanged);
-            logLevelContainer.Add(logLevelPopup);
-        }
-        
-        private void CreateAdvancedSection(VisualElement parent)
-        {
-            // Advanced section toggle
-            showAdvancedToggle = new Toggle("Show Advanced Settings");
-            showAdvancedToggle.style.marginTop = 20;
-            showAdvancedToggle.RegisterCallback<ChangeEvent<bool>>(OnAdvancedToggleChanged);
-            parent.Add(showAdvancedToggle);
-            
-            // Advanced section container
-            advancedSection = CreateSection("Advanced Settings", parent);
-            advancedSection.style.display = DisplayStyle.None;
-            
-            // Database settings
-            var dbSection = CreateSubSection("Database Settings", advancedSection);
-            
-            var dbPathContainer = CreateFieldContainer("Database Path:", dbSection);
-            var dbPathField = new TextField();
-            dbPathField.SetEnabled(false);
-            dbPathContainer.Add(dbPathField);
-            
-            // API settings
-            var apiSection = CreateSubSection("API Settings", advancedSection);
-            
-            var maxRetriesContainer = CreateFieldContainer("Max Retries:", apiSection);
-            var maxRetriesField = new IntegerField();
-            maxRetriesField.value = 3;
-            maxRetriesField.style.width = 100;
-            maxRetriesContainer.Add(maxRetriesField);
-            
-            var retryDelayContainer = CreateFieldContainer("Retry Delay (ms):", apiSection);
-            var retryDelayField = new IntegerField();
-            retryDelayField.value = 1000;
-            retryDelayField.style.width = 100;
-            retryDelayContainer.Add(retryDelayField);
-            
-            // Debug settings
-            var debugSection = CreateSubSection("Debug Settings", advancedSection);
-            
-            var verboseLoggingContainer = CreateFieldContainer("Verbose Logging:", debugSection);
-            var verboseLoggingToggle = new Toggle();
-            verboseLoggingContainer.Add(verboseLoggingToggle);
-            
-            var saveRequestsContainer = CreateFieldContainer("Save API Requests:", debugSection);
-            var saveRequestsToggle = new Toggle();
-            saveRequestsContainer.Add(saveRequestsToggle);
-            
-            // Service info section
-            var serviceInfoSection = CreateSubSection("Service Information", advancedSection);
-            
-            var platformLabel = new Label($"Platform: {GetCurrentPlatform()}");
-            platformLabel.style.fontSize = 12;
-            platformLabel.style.marginBottom = 2;
-            serviceInfoSection.Add(platformLabel);
-            
-            var executableLabel = new Label($"Service Executable: {GetServiceExecutableName()}");
-            executableLabel.style.fontSize = 12;
-            executableLabel.style.marginBottom = 2;
-            serviceInfoSection.Add(executableLabel);
-            
-            var streamingAssetsLabel = new Label($"StreamingAssets Path: {Application.streamingAssetsPath}");
-            streamingAssetsLabel.style.fontSize = 12;
-            streamingAssetsLabel.style.marginBottom = 2;
-            serviceInfoSection.Add(streamingAssetsLabel);
         }
         
         private void CreateActionButtons(VisualElement parent)
@@ -280,23 +121,6 @@ namespace UnityKnowLang.Editor
             
             buttonContainer.Add(rightButtons);
             parent.Add(buttonContainer);
-        }
-        
-        private void CreateStatusSection(VisualElement parent)
-        {
-            var statusSection = new VisualElement();
-            statusSection.style.marginTop = 20;
-            statusSection.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f, 0.3f);
-            
-            var statusTitle = new Label("Connection Status");
-            statusTitle.style.marginBottom = 5;
-            statusSection.Add(statusTitle);
-            
-            connectionStatusLabel = new Label("Not tested");
-            connectionStatusLabel.style.color = Color.gray;
-            statusSection.Add(connectionStatusLabel);
-            
-            parent.Add(statusSection);
         }
         
         private VisualElement CreateSection(string title, VisualElement parent)
@@ -372,56 +196,14 @@ namespace UnityKnowLang.Editor
             #endif
         }
         
-        private void OnAdvancedToggleChanged(ChangeEvent<bool> evt)
-        {
-            advancedSection.style.display = evt.newValue ? DisplayStyle.Flex : DisplayStyle.None;
-        }
-        
         private void OnSettingChanged<T>(ChangeEvent<T> evt)
         {
             // Enable save button when settings change
             if (saveButton != null)
                 saveButton.SetEnabled(true);
                 
-            // Update computed backend URL when host or port changes
-            if (evt.target == serviceHostField || evt.target == servicePortField)
-            {
-                if (backendUrlField != null && serviceHostField != null && servicePortField != null)
-                {
-                    backendUrlField.value = $"http://{serviceHostField.value}:{servicePortField.value}";
-                }
-            }
         }
-        
 
-        private void BrowsePythonPath()
-        {
-            string extension = "";
-            #if UNITY_EDITOR_WIN
-                extension = "exe";
-            #endif
-            
-            string path = EditorUtility.OpenFilePanel("Select Python Service Executable", 
-                                                     Application.streamingAssetsPath, extension);
-            if (!string.IsNullOrEmpty(path))
-            {
-                pythonPathField.value = path;
-                OnSettingChanged(new ChangeEvent<string>());
-            }
-        }
-        
-        private void BrowseConfigPath()
-        {
-            string path = EditorUtility.OpenFilePanel("Select KnowLang Config File", 
-                Application.dataPath, "json,toml,yaml,yml");
-            
-            if (!string.IsNullOrEmpty(path))
-            {
-                configPathField.value = path;
-                OnSettingChanged(new ChangeEvent<string>());
-            }
-        }
-        
         private void SaveSettings()
         {
             // Update settings from UI
@@ -432,9 +214,6 @@ namespace UnityKnowLang.Editor
             {
                 KnowLangSettings.SaveSettings(settings);
                 
-                connectionStatusLabel.text = "✅ Settings saved successfully";
-                connectionStatusLabel.style.color = Color.green;
-                
                 // Disable save button until next change
                 saveButton.SetEnabled(false);
                 
@@ -442,8 +221,6 @@ namespace UnityKnowLang.Editor
             }
             catch (Exception ex)
             {
-                connectionStatusLabel.text = $"❌ Failed to save settings: {ex.Message}";
-                connectionStatusLabel.style.color = Color.red;
                 Debug.LogError($"Failed to save settings: {ex}");
             }
         }
@@ -453,6 +230,7 @@ namespace UnityKnowLang.Editor
             settings = KnowLangSettings.LoadSettings();
         }
         
+        
         private void BindSettingsToUI()
         {
             if (serviceHostField != null)
@@ -461,33 +239,12 @@ namespace UnityKnowLang.Editor
                 servicePortField.value = settings.servicePort;
             if (autoStartToggle != null)
                 autoStartToggle.value = settings.autoStartService;
-            if (configPathField != null)
-                configPathField.value = settings.configFilePath;
-            if (backendUrlField != null)
-                backendUrlField.value = $"http://{settings.serviceHost}:{settings.servicePort}";
-            if (timeoutField != null)
-                timeoutField.value = settings.timeoutSeconds;
-            if (enableLoggingToggle != null)
-                enableLoggingToggle.value = settings.enableLogging;
-            if (logLevelPopup != null)
-                logLevelPopup.value = settings.logLevel;
-            if (pythonPathField != null)
-                pythonPathField.value = settings.pythonServicePath;
         }
-        
         private void UpdateSettingsFromUI()
         {
             settings.serviceHost = serviceHostField.value;
             settings.servicePort = servicePortField.value;
             settings.autoStartService = autoStartToggle.value;
-            settings.configFilePath = configPathField.value;
-            settings.timeoutSeconds = timeoutField.value;
-            settings.enableLogging = enableLoggingToggle.value;
-            settings.logLevel = logLevelPopup.value;
-            settings.pythonServicePath = pythonPathField.value;
-            
-            // Update computed backend URL
-            settings.backendUrl = $"http://{settings.serviceHost}:{settings.servicePort}";
         }
         
         private void ResetToDefaults()
@@ -498,8 +255,6 @@ namespace UnityKnowLang.Editor
             {
                 settings = new KnowLangSettings();
                 BindSettingsToUI();
-                connectionStatusLabel.text = "⚠️ Settings reset to defaults";
-                connectionStatusLabel.style.color = Color.yellow;
                 saveButton.SetEnabled(true);
             }
         }
@@ -522,29 +277,7 @@ namespace UnityKnowLang.Editor
         public string serviceHost = "127.0.0.1";
         public int servicePort = 8080;
         public bool autoStartService = true;
-        public string configFilePath = "";
         
-        [Header("Connection Settings")]
-        public string backendUrl = "http://127.0.0.1:8080";
-        public int timeoutSeconds = 30;
-        
-        [Header("Service Settings")]
-        public string pythonServicePath = "";
-        public bool enableLogging = true;
-        public string logLevel = "Info";
-        
-        [Header("Advanced Settings")]
-        public int maxRetries = 3;
-        public int retryDelayMs = 1000;
-        public bool verboseLogging = false;
-        public bool saveApiRequests = false;
-        
-        [Header("Database Settings")]
-        public string databasePath = "";
-        public bool autoBackup = true;
-        public int maxBackups = 5;
-        
-        // Helper methods
         public string GetServiceHost() => string.IsNullOrEmpty(serviceHost) ? "127.0.0.1" : serviceHost;
         public int GetServicePort() =>  servicePort;
         
