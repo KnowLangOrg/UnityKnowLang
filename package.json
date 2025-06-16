@@ -1,0 +1,23 @@
+{
+  "name": "com.knowlang.unityknowlang",
+  "version": "0.0.1",
+  "displayName": "Unity KnowLang",
+  "description": "A Unity plugin that provides centralized knowledge of your game projects",
+  "unity": "6.1",
+  "unityRelease": "6000.1.5f1",
+  "documentationUrl": "https://github.com/KnowLangOrg/UnityKnowLang#readme",
+  "changelogUrl": "https://github.com/KnowLangOrg/UnityKnowLang/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/KnowLangOrg/UnityKnowLang/blob/main/LICENSE.md",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "keywords": [
+    "knowledge",
+    "AI"
+  ],
+  "author": {
+    "name": "KnowLang Team",
+    "email": "support@mail.knowlang.dev",
+    "url": "https://github.com/KnowLangOrg/know-lang"
+  }
+}
