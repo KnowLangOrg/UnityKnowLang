@@ -217,9 +217,9 @@ namespace UnityKnowLang.Editor
                 content = result.progress_message,
                 isUser = false,
                 timestamp = DateTime.Now,
-                chatStatus = result.ChatStatus,
+                chatStatus = result.status,
                 isProgress = true,
-                title = GetStatusTitle(result.ChatStatus)
+                title = GetStatusTitle(result.status)
             };
             
             currentStreamingElement = CreateMessageElement(currentStreamingMessage);
@@ -232,7 +232,7 @@ namespace UnityKnowLang.Editor
         // NEW: Update existing streaming message
         private void UpdateStreamingMessage(StreamingChatResult result)
         {
-            if (result.ChatStatus == ChatStatus.COMPLETE)
+            if (result.status == ChatStatus.COMPLETE)
             {
                 // Replace with final message
                 chatContainer.Remove(currentStreamingElement);
@@ -257,8 +257,8 @@ namespace UnityKnowLang.Editor
             {
                 // Update progress message
                 currentStreamingMessage.content = result.progress_message;
-                currentStreamingMessage.chatStatus = result.ChatStatus;
-                currentStreamingMessage.title = GetStatusTitle(result.ChatStatus);
+                currentStreamingMessage.chatStatus = result.status;
+                currentStreamingMessage.title = GetStatusTitle(result.status);
 
                 // Update UI element
                 UpdateMessageElement(currentStreamingElement, currentStreamingMessage);
@@ -447,7 +447,6 @@ namespace UnityKnowLang.Editor
             container.Add(contentContainer);
         }
         
-        // NEW: Create collapsible code context section
         private void CreateCodeContextSection(VisualElement container, List<CodeContext> codeContexts)
         {
             var codeSection = new VisualElement();
@@ -455,28 +454,37 @@ namespace UnityKnowLang.Editor
             codeSection.style.paddingLeft = 15;
             
             // Section header
-            var headerContainer = new VisualElement();
-            headerContainer.style.flexDirection = FlexDirection.Row;
-            headerContainer.style.alignItems = Align.Center;
-            headerContainer.style.marginBottom = 8;
+            var sectionHeaderLabel = new Label($"📄 Code Context ({codeContexts.Count} files)");
+            sectionHeaderLabel.style.fontSize = 14;
+            sectionHeaderLabel.style.color = new Color(0.7f, 0.9f, 1f);
+            sectionHeaderLabel.style.marginBottom = 10;
+            codeSection.Add(sectionHeaderLabel);
             
-            var foldout = new Foldout();
-            foldout.text = $"📄 Code Context ({codeContexts.Count} files)";
-            foldout.value = true; // Expanded by default
-            foldout.style.fontSize = 12;
-            
-            // Create code blocks inside foldout
-            var codeContainer = new VisualElement();
-            
-            foreach (var context in codeContexts)
+            // Create individual foldout for each code context
+            for (int i = 0; i < codeContexts.Count; i++)
             {
-                var codeBlock = CreateCodeBlock(context);
-                codeContainer.Add(codeBlock);
+                var context = codeContexts[i];
+                var contextFoldout = CreateCodeContextFoldout(context, i + 1);
+                codeSection.Add(contextFoldout);
             }
             
-            foldout.Add(codeContainer);
-            codeSection.Add(foldout);
             container.Add(codeSection);
+        }
+        
+        // NEW: Create individual foldout for each code context
+        private Foldout CreateCodeContextFoldout(CodeContext context, int index)
+        {
+            var foldout = new Foldout();
+            foldout.text = $"{index}. {context.GetTitle()}";
+            foldout.value = false; // Collapsed by default to save space
+            foldout.style.fontSize = 12;
+            foldout.style.marginBottom = 5;
+            
+            // Create the code block content
+            var codeBlock = CreateCodeBlock(context);
+            foldout.Add(codeBlock);
+            
+            return foldout;
         }
         
         // NEW: Create individual code block with syntax highlighting
@@ -484,14 +492,19 @@ namespace UnityKnowLang.Editor
         {
             var blockContainer = new VisualElement();
             blockContainer.style.marginBottom = 10;
+            blockContainer.style.marginTop = 5;
             blockContainer.style.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+            blockContainer.style.paddingLeft = 10;
+            blockContainer.style.paddingRight = 10;
+            blockContainer.style.paddingTop = 8;
+            blockContainer.style.paddingBottom = 8;
             
-            // File header
-            var fileHeader = new Label(context.GetTitle());
-            fileHeader.style.fontSize = 11;
-            fileHeader.style.color = new Color(0.7f, 0.9f, 1f);
-            fileHeader.style.marginBottom = 5;
-            blockContainer.Add(fileHeader);
+            // File path info (smaller, since it's already in the foldout title)
+            var fileInfo = new Label($"Lines {context.startLine}-{context.endLine}");
+            fileInfo.style.fontSize = 10;
+            fileInfo.style.color = new Color(0.6f, 0.6f, 0.6f);
+            fileInfo.style.marginBottom = 8;
+            blockContainer.Add(fileInfo);
             
             // Code content
             var codeLabel = new Label(context.code);
