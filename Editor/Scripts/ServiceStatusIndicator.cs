@@ -18,27 +18,38 @@ namespace UnityKnowLang.Editor
             // Create the UI structure
             style.flexDirection = FlexDirection.Row;
             style.justifyContent = Justify.Center;
-            style.height = 30;
+            style.alignItems = Align.Center;
+            style.minHeight = 28; // Match header button height
+            style.flexShrink = 0; // Don't compress the status indicator itself
 
             // Status dot
             statusDot = new VisualElement();
-            statusDot.style.width = 12;
-            statusDot.style.height = 12;
+            statusDot.style.width = 10;
+            statusDot.style.height = 10;
+            statusDot.style.marginRight = 8;
+            statusDot.style.flexShrink = 0;
             Add(statusDot);
 
             // Status label
             statusLabel = new Label("Service Stopped");
             statusLabel.style.flexGrow = 1;
-            statusLabel.style.height = 30;
+            statusLabel.style.flexShrink = 1; // Allow text to compress
+            statusLabel.style.minWidth = 80; // Ensure minimum readable width
+            statusLabel.style.fontSize = 12;
+            statusLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            statusLabel.style.marginRight = 8;
             Add(statusLabel);
 
-            // Action button
+            // Action button with responsive sizing
             actionButton = new Button(OnActionButtonClicked)
             {
                 text = "Start"
             };
-            actionButton.style.width = 100;
-            actionButton.style.height = 30;
+            actionButton.style.minWidth = 50;
+            actionButton.style.maxWidth = 80;
+            actionButton.style.height = 26;
+            actionButton.style.flexShrink = 1;
+            actionButton.style.fontSize = 11;
             Add(actionButton);
 
             UpdateDisplay(ServiceStatus.Stopped);
@@ -71,35 +82,35 @@ namespace UnityKnowLang.Editor
             {
                 case ServiceStatus.Stopped:
                     statusDot.style.backgroundColor = Color.red;
-                    statusLabel.text = "Service Stopped";
+                    statusLabel.text = "Stopped";
                     actionButton.text = "Start";
                     actionButton.SetEnabled(true);
                     break;
                     
                 case ServiceStatus.Starting:
                     statusDot.style.backgroundColor = Color.yellow;
-                    statusLabel.text = "Service Starting...";
+                    statusLabel.text = "Starting...";
                     actionButton.text = "Starting";
                     actionButton.SetEnabled(false);
                     break;
                     
                 case ServiceStatus.Running:
                     statusDot.style.backgroundColor = Color.green;
-                    statusLabel.text = $"Service Running ({serviceManager?.ServiceUrl})";
+                    statusLabel.text = "Running";
                     actionButton.text = "Stop";
                     actionButton.SetEnabled(true);
                     break;
                     
                 case ServiceStatus.Stopping:
                     statusDot.style.backgroundColor = Color.yellow;
-                    statusLabel.text = "Service Stopping...";
+                    statusLabel.text = "Stopping...";
                     actionButton.text = "Stopping";
                     actionButton.SetEnabled(false);
                     break;
                     
                 case ServiceStatus.Error:
                     statusDot.style.backgroundColor = Color.red;
-                    statusLabel.text = "Service Error";
+                    statusLabel.text = "Error";
                     actionButton.text = "Restart";
                     actionButton.SetEnabled(true);
                     break;

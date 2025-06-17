@@ -19,7 +19,6 @@ namespace UnityKnowLang.Editor
         private TextField messageInput;
         private Button sendButton;
         private Label statusLabel;
-        private Button connectionButton;
         private VisualElement chatContainer;
         private KnowLangServerManger serviceManager;
         private ServiceClient serviceClient;
@@ -78,19 +77,22 @@ namespace UnityKnowLang.Editor
             {
                 header.style.flexDirection = FlexDirection.Row;
                 header.style.justifyContent = Justify.Center;
-                header.style.height = 60;
-                header.style.paddingBottom = 10;
-                header.style.paddingTop = 10;
+                header.style.minHeight = 50;
+                header.style.paddingBottom = 8;
+                header.style.paddingTop = 8;
                 header.style.paddingLeft = 10;
                 header.style.paddingRight = 10;
                 header.style.borderBottomWidth = 1;
                 header.style.borderBottomColor = Color.gray;
+                header.style.flexWrap = Wrap.Wrap; // Allow wrapping on small screens
             }
             void CreateStatusIndicator(VisualElement header)
             {
                 statusIndicator = new ServiceStatusIndicator();
                 statusIndicator.SetServiceManager(serviceManager);
                 statusIndicator.style.flexGrow = 1;
+                statusIndicator.style.minWidth = 200; // Ensure enough space for status + button
+                statusIndicator.style.marginRight = 8; // Space before other buttons
                 header.Add(statusIndicator);
             }
             void CreateSettingsButton(VisualElement header)
@@ -99,20 +101,28 @@ namespace UnityKnowLang.Editor
                 {
                     text = "Settings"
                 };
-                settingsButton.style.width = 100;
-                settingsButton.style.height = 30;
+                // Responsive button sizing
+                settingsButton.style.minWidth = 60;
+                settingsButton.style.maxWidth = 100;
+                settingsButton.style.height = 28;
+                settingsButton.style.flexShrink = 1;
+                settingsButton.style.marginLeft = 3;
                 header.Add(settingsButton);
             }
-            void CreateConnectionButton(VisualElement header)
+
+            void CreateParseButton(VisualElement header)
             {
-                connectionButton = new Button(ToggleConnection)
+                var parseButton = new Button(ParseProject)
                 {
-                    text = serviceConnected ? "Disconnect" : "Connect"
+                    text = "Parse Project"
                 };
-                connectionButton.style.height = 30;
-                connectionButton.style.width = 100;
-                connectionButton.style.marginLeft = 5;
-                header.Add(connectionButton);
+                // Responsive button sizing
+                parseButton.style.minWidth = 70;
+                parseButton.style.maxWidth = 120;
+                parseButton.style.height = 28;
+                parseButton.style.flexShrink = 1;
+                parseButton.style.marginLeft = 3;
+                header.Add(parseButton);
             }
 
             void CreateClearChatButton(VisualElement header)
@@ -124,9 +134,12 @@ namespace UnityKnowLang.Editor
                 {
                     text = "Clear History"
                 };
-                clearChatButton.style.height = 30;
-                clearChatButton.style.width = 100;
-                clearChatButton.style.marginLeft = 5;
+                // Responsive button sizing
+                clearChatButton.style.minWidth = 70;
+                clearChatButton.style.maxWidth = 120;
+                clearChatButton.style.height = 28;
+                clearChatButton.style.flexShrink = 1;
+                clearChatButton.style.marginLeft = 3;
                 header.Add(clearChatButton);
             }
 
@@ -134,7 +147,7 @@ namespace UnityKnowLang.Editor
             HeaderStyling(header);
             CreateStatusIndicator(header);
             CreateSettingsButton(header);
-            CreateConnectionButton(header);
+            CreateParseButton(header);
             CreateClearChatButton(header);
 
             parent.Add(header);
@@ -319,6 +332,40 @@ namespace UnityKnowLang.Editor
             finally
             {
                 SetSendButtonEnabled(true);
+            }
+        }
+        
+        private async void ParseProject()
+        {
+            if (!serviceManager.IsRunning)
+            {
+                AddSystemMessage("❌ Service is not running. Please connect first.");
+                return;
+            }
+
+            try
+            {
+                // Get the Unity project's Assets folder path
+                string assetsPath = Application.dataPath;
+                
+                AddSystemMessage($"🔄 Starting project parse for: {assetsPath}");
+                Debug.Log($"ParseProject: Assets path = {assetsPath}");
+                
+                // Create the request using proper class instead of anonymous object
+                var parseRequest = new ParseProjectRequest(assetsPath);
+                
+                Debug.Log($"ParseProject: Calling API with request = {Newtonsoft.Json.JsonConvert.SerializeObject(parseRequest)}");
+                
+                // Call the parse endpoint with correct path
+                var result = await serviceClient.PostAsync<object>("/parse", parseRequest);
+                
+                AddSystemMessage("✅ Project parsing completed successfully!");
+                Debug.Log($"ParseProject: Success - {result}");
+            }
+            catch (Exception ex)
+            {
+                AddSystemMessage($"❌ Failed to parse project: {ex.Message}");
+                Debug.LogError($"Parse project error: {ex}");
             }
         }
         #endregion
@@ -623,36 +670,13 @@ namespace UnityKnowLang.Editor
             }
         }
         
-        private async void ToggleConnection()
-        {
-            try
-            {
-                if (serviceManager.IsRunning)
-                {
-                    serviceManager.StopService();
-                    // UpdateConnectionStatus(false, "Disconnected");
-                }
-                else
-                {
-                    await StartServiceAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                UpdateConnectionStatus(false, $"Connection error: {ex.Message}");
-            }
-        }
-        
         private void UpdateConnectionStatus(bool connected, string status)
         {
             serviceConnected = connected;
             serviceStatus = status;
             
             SetSendButtonEnabled(connected);
-                
-            // Update connection button text
-            if (connectionButton != null)
-                connectionButton.text = connected ? "Disconnect" : "Connect";
+            // Note: Connection button is now handled by ServiceStatusIndicator
         }
         
         private void SetSendButtonEnabled(bool enabled)

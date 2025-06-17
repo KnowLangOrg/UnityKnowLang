@@ -114,6 +114,20 @@ namespace UnityKnowLang.Editor
     }
 
     /// <summary>
+    /// Request model for project parsing
+    /// </summary>
+    [Serializable]
+    public class ParseProjectRequest
+    {
+        public string path;
+
+        public ParseProjectRequest(string path)
+        {
+            this.path = path;
+        }
+    }
+
+    /// <summary>
     /// HTTP client for communicating with the KnowLang Python service
     /// </summary>
     public class ServiceClient
@@ -154,7 +168,10 @@ namespace UnityKnowLang.Editor
         public async Task<T> PostAsync<T>(string endpoint, object data) where T : class
         {
             string url = $"{baseUrl}/{endpoint.TrimStart('/')}";
-            string jsonData = JsonUtility.ToJson(data);
+            // Use Newtonsoft.Json for proper serialization of anonymous objects
+            string jsonData = JsonConvert.SerializeObject(data);
+            
+            Debug.Log($"POST {url} with data: {jsonData}"); // Debug logging
 
             using (var request = new UnityWebRequest(url, "POST"))
             {
@@ -168,7 +185,12 @@ namespace UnityKnowLang.Editor
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     string json = request.downloadHandler.text;
-                    return JsonUtility.FromJson<T>(json);
+                    if (typeof(T) == typeof(object))
+                    {
+                        // For generic object return type, just return a dummy object
+                        return (T)(object)new { success = true };
+                    }
+                    return JsonConvert.DeserializeObject<T>(json);
                 }
                 else
                 {
