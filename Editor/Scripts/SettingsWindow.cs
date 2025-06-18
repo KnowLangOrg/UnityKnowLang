@@ -240,7 +240,7 @@ namespace UnityKnowLang.Editor
                 
                 // Show popup to inform user to restart service
                 EditorUtility.DisplayDialog("Settings Saved", 
-                    "Settings have been saved successfully.\n\nPlease restart the KnowLang service for changes to take effect.", 
+                    "Settings have been saved successfully.\n\nPlease close and reopen the UnityKnowLang window for changes to take effect.", 
                     "OK");
             }
             catch (Exception ex)

@@ -253,7 +253,7 @@ namespace UnityKnowLang.Editor
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = executablePath,
-                    Arguments = "",
+                    Arguments = config.GetCommandLineArgs(),
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -384,6 +384,16 @@ namespace UnityKnowLang.Editor
         public bool AutoStart = true;
         public bool RestartOnPlayMode = false;
         public int HealthCheckInterval = 30; // seconds
+
+        public string GetCommandLineArgs()
+        {
+            var args = new List<string>
+            {
+                $"--server.port={Port}",
+            };
+
+            return string.Join(" ", args);  
+        }
     }
 
     [Serializable]
