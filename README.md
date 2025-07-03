@@ -41,6 +41,28 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 
 ![HTTP Connection Setup](HTTP_Connection.png)
 
+### 2. Resolve Dependencies
+
+UnityKnowLang uses Newtonsoft.Json for JSON serialization. Follow these steps to ensure proper dependency resolution:
+
+#### Option A: Via Package Manager (Recommended)
+
+1. Open Unity Package Manager (`Window > Package Manager`)
+2. Switch to `Unity Registry` in the dropdown
+3. Search for `Newtonsoft Json`
+4. Click `Install` to add it to your project
+
+#### Option B: Via manifest.json
+
+1. Open `Packages/manifest.json` in your project
+2. Add the following dependency to the `dependencies` section:
+   ```json
+   "com.unity.nuget.newtonsoft-json": "3.2.1"
+   ```
+3. Save the file and let Unity resolve the dependency
+
+> TODO: ideally, UnityKnowLang should be properly configured to specify this dependency to prevent manual configruation.
+
 ## Usage
 
 1. **Open Unity Plugin**: Access the chat interface through Unity's menu or inspector
@@ -62,10 +84,6 @@ Modify connection settings in your Unity project settings or via the plugin inte
 - Check HTTP connections are enabled in Unity
 - Ensure firewall allows connections to backend
 
-### Performance
-- Consider running KnowLang backend on local network for faster responses
-- Adjust timeout settings based on query complexity
-
 ## Development
 
 This plugin communicates with KnowLang via HTTP ASGI server. For development:
@@ -78,8 +96,6 @@ This plugin communicates with KnowLang via HTTP ASGI server. For development:
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/knowlangorg/unityknowlang/issues)
-- **KnowLang Docs**: [knowlang.dev](https://github.com/knowlangorg/know-lang)
-- **Unity Forum**: [Unity Package Support](link-to-unity-forum)
 
 ## License
 
