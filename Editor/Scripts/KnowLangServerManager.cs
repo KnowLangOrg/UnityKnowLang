@@ -82,9 +82,9 @@ namespace UnityKnowLang.Editor
                     return false;
                 }
 
-                // Configure the codebase.yaml file before starting the service
+                // Configure the YAML files before starting the service
                 var configManager = new KnowLangConfigManager();
-                configManager.ConfigureCodebaseYaml(executablePath);
+                configManager.ConfigureYamlFiles(executablePath);
 
                 // Start the Python process
                 if (!StartPythonProcess(executablePath))
@@ -197,7 +197,7 @@ namespace UnityKnowLang.Editor
             return false;
         }
 
-        private async Task<bool> WaitForServiceReady(int timeoutSeconds = 30)
+        private async Task<bool> WaitForServiceReady(int timeoutSeconds = 60)
         {
             LogMessage("Waiting for service to be ready...");
             
@@ -375,39 +375,40 @@ namespace UnityKnowLang.Editor
     /// </summary>
     public class KnowLangConfigManager
     {
-        private const string CONFIG_FILE_NAME = "codebase.yaml";
-        
         /// <summary>
-        /// Configures the codebase.yaml file to point to Unity's Assets directory
+        /// Configures the *.yaml files to point to Unity's Assets directory
         /// </summary>
         /// <param name="executablePath">Path to the KnowLang service executable</param>
         /// <returns>True if configuration was successful, false otherwise</returns>
-        public bool ConfigureCodebaseYaml(string executablePath)
+        public bool ConfigureYamlFiles(string executablePath)
         {
             try
             {
-                string configPath = FindCodebaseYamlPath(executablePath);
-                if (string.IsNullOrEmpty(configPath))
+                List<string> configPaths = FindSettingFiles(executablePath);
+                if (configPaths.Count == 0)
                 {
-                    UnityEngine.Debug.LogError("codebase.yaml file not found near the service executable.");
-                    return false;
+                    UnityEngine.Debug.LogWarning("codebase.yaml file not found near the service executable.");
+                    return true;
                 }
 
                 // Get Unity's Assets folder path
                 string assetsPath = Application.dataPath;
 
                 // Read, modify, and write back the configuration
-                string yamlContent = File.ReadAllText(configPath);
-                string modifiedYaml = UpdateProcessorConfigPath(yamlContent, assetsPath);
+                foreach (string configPath in configPaths)
+                {
+                    string yamlContent = File.ReadAllText(configPath);
+                    string modifiedYaml = UpdateProcessorConfigPath(yamlContent, assetsPath);
 
-                File.WriteAllText(configPath, modifiedYaml);
+                    File.WriteAllText(configPath, modifiedYaml);
+                }
 
-                UnityEngine.Debug.Log($"✅ Updated codebase.yaml processor_config directory_path to: {assetsPath}");
+                UnityEngine.Debug.Log($"✅ Updated YAML files processor_config directory_path to: {assetsPath}");
                 return true;
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogError($"Failed to configure codebase.yaml: {ex.Message}");
+                UnityEngine.Debug.LogError($"Failed to configure YAML files: {ex.Message}");
                 return false;
             }
         }
@@ -417,16 +418,24 @@ namespace UnityKnowLang.Editor
         /// </summary>
         /// <param name="executablePath">Path to the service executable</param>
         /// <returns>Path to codebase.yaml file or null if not found</returns>
-        private string FindCodebaseYamlPath(string executablePath)
+        private List<string> FindSettingFiles(string executablePath)
         {
             string executableDir = Path.GetDirectoryName(executablePath);
-            
+            var configPaths = new List<string>();
+
             // Check in the same directory as the executable
-            string configPath = Path.Combine(executableDir, "_internal", "settings", "assets", CONFIG_FILE_NAME);
-            if (File.Exists(configPath))
-                return configPath;
-            
-            return null;
+            string configPath = Path.Combine(executableDir, "_internal", "settings", "assets");
+            if (Directory.Exists(configPath))
+            {
+                // Support both .yaml and .yml extensions using multiple patterns
+                string[] yamlPatterns = { "*.yaml", "*.yml" };
+                foreach (string pattern in yamlPatterns)
+                {
+                    configPaths.AddRange(Directory.GetFiles(configPath, pattern, SearchOption.AllDirectories));
+                }
+            }
+
+            return configPaths;
         }
         
         /// <summary>
@@ -457,7 +466,7 @@ namespace UnityKnowLang.Editor
             // If no placeholders were found, log a warning
             if (!replacementMade)
             {
-                UnityEngine.Debug.LogWarning("⚠️ No Unity Assets path placeholders found in codebase.yaml. Expected placeholders: %UNITY_ASSETS_PATH%, etc.");
+                UnityEngine.Debug.LogWarning("⚠️ No Unity Assets path placeholders found in YAML files. Expected placeholders: %UNITY_ASSETS_PATH%, etc.");
             }
             
             return result;
