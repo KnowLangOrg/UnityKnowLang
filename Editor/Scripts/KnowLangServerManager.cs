@@ -325,25 +325,36 @@ namespace UnityKnowLang.Editor
         #region Unity Event Handlers
         private void OnPlayModeStateChanged(PlayModeStateChange state)
         {
-            // Optionally restart service when entering/exiting play mode
-            if (config.RestartOnPlayMode)
-            {
-                switch (state)
-                {
-                    case PlayModeStateChange.ExitingEditMode:
-                        LogMessage("Exiting edit mode - maintaining service");
-                        break;
-                    case PlayModeStateChange.EnteredPlayMode:
-                        LogMessage("Entered play mode - service available");
-                        break;
-                }
-            }
+            // Do nothing for now
         }
 
         private void OnBeforeAssemblyReload()
         {
-            // Keep service running during assembly reload for hot-reload support
-            LogMessage("Assembly reload detected - maintaining service connection");
+            // Stop the service during assembly reload to prevent port conflicts
+            LogMessage("Assembly reload detected - stopping service to prevent port conflicts");
+            
+            // Force stop the Python process without changing status events
+            // since the manager instance will be destroyed anyway
+            if (pythonProcess != null && !pythonProcess.HasExited)
+            {
+                try
+                {
+                    LogMessage($"Killing Python process (PID: {pythonProcess.Id}) before assembly reload");
+                    pythonProcess.Kill();
+                    pythonProcess.WaitForExit(2000); // Wait up to 2 seconds
+                    pythonProcess.Dispose();
+                    pythonProcess = null;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error killing Python process during assembly reload: {ex.Message}");
+                }
+            }
+            
+            // Clean up log file writer
+            logFileWriter?.Close();
+            logFileWriter?.Dispose();
+            logFileWriter = null;
         }
         #endregion
 
