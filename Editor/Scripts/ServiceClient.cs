@@ -114,20 +114,6 @@ namespace UnityKnowLang.Editor
     }
 
     /// <summary>
-    /// Request model for project parsing
-    /// </summary>
-    [Serializable]
-    public class ParseProjectRequest
-    {
-        public string path;
-
-        public ParseProjectRequest(string path)
-        {
-            this.path = path;
-        }
-    }
-
-    /// <summary>
     /// HTTP client for communicating with the KnowLang Python service
     /// </summary>
     public class ServiceClient

@@ -82,6 +82,10 @@ namespace UnityKnowLang.Editor
                     return false;
                 }
 
+                // Configure the codebase.yaml file before starting the service
+                var configManager = new KnowLangConfigManager();
+                configManager.ConfigureCodebaseYaml(executablePath);
+
                 // Start the Python process
                 if (!StartPythonProcess(executablePath))
                 {
@@ -364,6 +368,102 @@ namespace UnityKnowLang.Editor
         }
         #endregion
     }
+
+    #region KnowLang Configuration Manager
+    /// <summary>
+    /// Manages the codebase.yaml configuration file for KnowLang service
+    /// </summary>
+    public class KnowLangConfigManager
+    {
+        private const string CONFIG_FILE_NAME = "codebase.yaml";
+        
+        /// <summary>
+        /// Configures the codebase.yaml file to point to Unity's Assets directory
+        /// </summary>
+        /// <param name="executablePath">Path to the KnowLang service executable</param>
+        /// <returns>True if configuration was successful, false otherwise</returns>
+        public bool ConfigureCodebaseYaml(string executablePath)
+        {
+            try
+            {
+                string configPath = FindCodebaseYamlPath(executablePath);
+                if (string.IsNullOrEmpty(configPath))
+                {
+                    UnityEngine.Debug.LogError("codebase.yaml file not found near the service executable.");
+                    return false;
+                }
+
+                // Get Unity's Assets folder path
+                string assetsPath = Application.dataPath;
+
+                // Read, modify, and write back the configuration
+                string yamlContent = File.ReadAllText(configPath);
+                string modifiedYaml = UpdateProcessorConfigPath(yamlContent, assetsPath);
+
+                File.WriteAllText(configPath, modifiedYaml);
+
+                UnityEngine.Debug.Log($"✅ Updated codebase.yaml processor_config directory_path to: {assetsPath}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"Failed to configure codebase.yaml: {ex.Message}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Finds the codebase.yaml file near the service executable
+        /// </summary>
+        /// <param name="executablePath">Path to the service executable</param>
+        /// <returns>Path to codebase.yaml file or null if not found</returns>
+        private string FindCodebaseYamlPath(string executablePath)
+        {
+            string executableDir = Path.GetDirectoryName(executablePath);
+            
+            // Check in the same directory as the executable
+            string configPath = Path.Combine(executableDir, "_internal", "settings", "assets", CONFIG_FILE_NAME);
+            if (File.Exists(configPath))
+                return configPath;
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Updates the processor_config directory_path in the YAML content by replacing placeholders
+        /// </summary>
+        /// <param name="yamlContent">Original YAML content</param>
+        /// <param name="assetsPath">Unity's Assets directory absolute path</param>
+        /// <returns>Modified YAML content</returns>
+        private string UpdateProcessorConfigPath(string yamlContent, string assetsPath)
+        {
+            // Normalize the path for YAML (use forward slashes)
+            string normalizedPath = assetsPath.Replace('\\', '/');
+            
+            // Define placeholders to look for
+            string placeholder = "%UNITY_ASSETS_PATH%";
+
+            string result = yamlContent;
+            bool replacementMade = false;
+            
+            // Replace any found placeholders with the actual Assets path
+            if (result.Contains(placeholder))
+            {
+                result = result.Replace(placeholder, $"{normalizedPath}");
+                replacementMade = true;
+                UnityEngine.Debug.Log($"🔄 Replaced placeholder '{placeholder}' with: {normalizedPath}");
+            }
+            
+            // If no placeholders were found, log a warning
+            if (!replacementMade)
+            {
+                UnityEngine.Debug.LogWarning("⚠️ No Unity Assets path placeholders found in codebase.yaml. Expected placeholders: %UNITY_ASSETS_PATH%, etc.");
+            }
+            
+            return result;
+        }
+    }
+    #endregion
 
     #region Supporting Types
     public enum ServiceStatus

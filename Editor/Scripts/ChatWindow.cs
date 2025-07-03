@@ -345,19 +345,10 @@ namespace UnityKnowLang.Editor
 
             try
             {
-                // Get the Unity project's Assets folder path
-                string assetsPath = Application.dataPath;
+                AddSystemMessage("🔄 Starting project parsing...");
                 
-                AddSystemMessage($"🔄 Starting project parse for: {assetsPath}");
-                Debug.Log($"ParseProject: Assets path = {assetsPath}");
-                
-                // Create the request using proper class instead of anonymous object
-                var parseRequest = new ParseProjectRequest(assetsPath);
-                
-                Debug.Log($"ParseProject: Calling API with request = {Newtonsoft.Json.JsonConvert.SerializeObject(parseRequest)}");
-                
-                // Call the parse endpoint with correct path
-                var result = await serviceClient.PostAsync<object>("/parse", parseRequest);
+                // Send empty object instead of null to satisfy FastAPI's body requirement
+                var result = await serviceClient.PostAsync<object>("/parse", new { });
                 
                 AddSystemMessage("✅ Project parsing completed successfully!");
                 Debug.Log($"ParseProject: Success - {result}");
