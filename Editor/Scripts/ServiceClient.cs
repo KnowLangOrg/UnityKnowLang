@@ -243,10 +243,15 @@ namespace UnityKnowLang.Editor
                             onMessageReceived?.Invoke(chatResult);
 
                             // Check if this is the final message
-                            if (chatResult.status == ChatStatus.COMPLETE || chatResult.status == ChatStatus.ERROR)
+                            if (chatResult.status == ChatStatus.COMPLETE || 
+                                chatResult.status == ChatStatus.ERROR ||
+                                (!string.IsNullOrEmpty(chatResult.answer) && chatResult.answer.Contains("error processing")))
                             {
                                 finalResult = chatResult;
                                 completionSource.SetResult(chatResult);
+                                
+                                // Close WebSocket to unblock Connect() method
+                                webSocket.Close();
                             }
                         }
                     }
@@ -260,6 +265,9 @@ namespace UnityKnowLang.Editor
                             progress_message = "Client-side parsing error"
                         };
                         completionSource.SetResult(errorResult);
+                        
+                        // Close WebSocket to unblock Connect() method
+                        webSocket.Close();
                     }
                 };
 
