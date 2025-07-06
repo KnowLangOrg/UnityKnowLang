@@ -82,6 +82,10 @@ namespace UnityKnowLang.Editor
                     return false;
                 }
 
+                // Configure the YAML files before starting the service
+                var configManager = new KnowLangConfigManager();
+                configManager.ConfigureYamlFiles(executablePath);
+
                 // Start the Python process
                 if (!StartPythonProcess(executablePath))
                 {
@@ -193,7 +197,7 @@ namespace UnityKnowLang.Editor
             return false;
         }
 
-        private async Task<bool> WaitForServiceReady(int timeoutSeconds = 30)
+        private async Task<bool> WaitForServiceReady(int timeoutSeconds = 60)
         {
             LogMessage("Waiting for service to be ready...");
             
@@ -321,25 +325,36 @@ namespace UnityKnowLang.Editor
         #region Unity Event Handlers
         private void OnPlayModeStateChanged(PlayModeStateChange state)
         {
-            // Optionally restart service when entering/exiting play mode
-            if (config.RestartOnPlayMode)
-            {
-                switch (state)
-                {
-                    case PlayModeStateChange.ExitingEditMode:
-                        LogMessage("Exiting edit mode - maintaining service");
-                        break;
-                    case PlayModeStateChange.EnteredPlayMode:
-                        LogMessage("Entered play mode - service available");
-                        break;
-                }
-            }
+            // Do nothing for now
         }
 
         private void OnBeforeAssemblyReload()
         {
-            // Keep service running during assembly reload for hot-reload support
-            LogMessage("Assembly reload detected - maintaining service connection");
+            // Stop the service during assembly reload to prevent port conflicts
+            LogMessage("Assembly reload detected - stopping service to prevent port conflicts");
+            
+            // Force stop the Python process without changing status events
+            // since the manager instance will be destroyed anyway
+            if (pythonProcess != null && !pythonProcess.HasExited)
+            {
+                try
+                {
+                    LogMessage($"Killing Python process (PID: {pythonProcess.Id}) before assembly reload");
+                    pythonProcess.Kill();
+                    pythonProcess.WaitForExit(2000); // Wait up to 2 seconds
+                    pythonProcess.Dispose();
+                    pythonProcess = null;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error killing Python process during assembly reload: {ex.Message}");
+                }
+            }
+            
+            // Clean up log file writer
+            logFileWriter?.Close();
+            logFileWriter?.Dispose();
+            logFileWriter = null;
         }
         #endregion
 
@@ -364,6 +379,111 @@ namespace UnityKnowLang.Editor
         }
         #endregion
     }
+
+    #region KnowLang Configuration Manager
+    /// <summary>
+    /// Manages the codebase.yaml configuration file for KnowLang service
+    /// </summary>
+    public class KnowLangConfigManager
+    {
+        /// <summary>
+        /// Configures the *.yaml files to point to Unity's Assets directory
+        /// </summary>
+        /// <param name="executablePath">Path to the KnowLang service executable</param>
+        /// <returns>True if configuration was successful, false otherwise</returns>
+        public bool ConfigureYamlFiles(string executablePath)
+        {
+            try
+            {
+                List<string> configPaths = FindSettingFiles(executablePath);
+                if (configPaths.Count == 0)
+                {
+                    UnityEngine.Debug.LogWarning("codebase.yaml file not found near the service executable.");
+                    return true;
+                }
+
+                // Get Unity's Assets folder path
+                string assetsPath = Application.dataPath;
+
+                // Read, modify, and write back the configuration
+                foreach (string configPath in configPaths)
+                {
+                    string yamlContent = File.ReadAllText(configPath);
+                    string modifiedYaml = UpdateProcessorConfigPath(yamlContent, assetsPath);
+
+                    File.WriteAllText(configPath, modifiedYaml);
+                }
+
+                UnityEngine.Debug.Log($"✅ Updated YAML files processor_config directory_path to: {assetsPath}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"Failed to configure YAML files: {ex.Message}");
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Finds the codebase.yaml file near the service executable
+        /// </summary>
+        /// <param name="executablePath">Path to the service executable</param>
+        /// <returns>Path to codebase.yaml file or null if not found</returns>
+        private List<string> FindSettingFiles(string executablePath)
+        {
+            string executableDir = Path.GetDirectoryName(executablePath);
+            var configPaths = new List<string>();
+
+            // Check in the same directory as the executable
+            string configPath = Path.Combine(executableDir, "_internal", "settings", "assets");
+            if (Directory.Exists(configPath))
+            {
+                // Support both .yaml and .yml extensions using multiple patterns
+                string[] yamlPatterns = { "*.yaml", "*.yml" };
+                foreach (string pattern in yamlPatterns)
+                {
+                    configPaths.AddRange(Directory.GetFiles(configPath, pattern, SearchOption.AllDirectories));
+                }
+            }
+
+            return configPaths;
+        }
+        
+        /// <summary>
+        /// Updates the processor_config directory_path in the YAML content by replacing placeholders
+        /// </summary>
+        /// <param name="yamlContent">Original YAML content</param>
+        /// <param name="assetsPath">Unity's Assets directory absolute path</param>
+        /// <returns>Modified YAML content</returns>
+        private string UpdateProcessorConfigPath(string yamlContent, string assetsPath)
+        {
+            // Normalize the path for YAML (use forward slashes)
+            string normalizedPath = assetsPath.Replace('\\', '/');
+            
+            // Define placeholders to look for
+            string placeholder = "%UNITY_ASSETS_PATH%";
+
+            string result = yamlContent;
+            bool replacementMade = false;
+            
+            // Replace any found placeholders with the actual Assets path
+            if (result.Contains(placeholder))
+            {
+                result = result.Replace(placeholder, $"{normalizedPath}");
+                replacementMade = true;
+                UnityEngine.Debug.Log($"🔄 Replaced placeholder '{placeholder}' with: {normalizedPath}");
+            }
+            
+            // If no placeholders were found, log a warning
+            if (!replacementMade)
+            {
+                UnityEngine.Debug.LogWarning("⚠️ No Unity Assets path placeholders found in YAML files. Expected placeholders: %UNITY_ASSETS_PATH%, etc.");
+            }
+            
+            return result;
+        }
+    }
+    #endregion
 
     #region Supporting Types
     public enum ServiceStatus
