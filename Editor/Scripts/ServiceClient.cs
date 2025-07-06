@@ -229,31 +229,25 @@ namespace UnityKnowLang.Editor
                             onMessageReceived?.Invoke(chatResult);
 
                             // Check if this is the final message
-                            if (chatResult.status == ChatStatus.COMPLETE || 
+                            if (chatResult.status == ChatStatus.COMPLETE ||
                                 chatResult.status == ChatStatus.ERROR ||
                                 (!string.IsNullOrEmpty(chatResult.answer) && chatResult.answer.Contains("error processing")))
                             {
                                 finalResult = chatResult;
                                 completionSource.SetResult(chatResult);
-                                
-                                // Close WebSocket to unblock Connect() method
-                                webSocket.Close();
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogError($"Error parsing WebSocket message: {ex.Message}");
+                        Debug.LogWarning($"Error parsing WebSocket message: {ex.Message}");
                         var errorResult = new StreamingChatResult
                         {
                             answer = $"Error parsing server response: {ex.Message}",
                             status = ChatStatus.ERROR,
                             progress_message = "Client-side parsing error"
                         };
-                        completionSource.SetResult(errorResult);
-                        
-                        // Close WebSocket to unblock Connect() method
-                        webSocket.Close();
+                        completionSource.TrySetResult(errorResult);
                     }
                 };
 
@@ -266,7 +260,7 @@ namespace UnityKnowLang.Editor
                         status = ChatStatus.ERROR,
                         progress_message = "Connection error"
                     };
-                    completionSource.SetResult(errorResult);
+                    completionSource.TrySetResult(errorResult);
                 };
 
                 webSocket.OnClose += (closeCode) =>
@@ -282,7 +276,7 @@ namespace UnityKnowLang.Editor
                             status = ChatStatus.ERROR,
                             progress_message = "Connection terminated"
                         };
-                        completionSource.SetResult(errorResult);
+                        completionSource.TrySetResult(errorResult);
                     }
                 };
 
