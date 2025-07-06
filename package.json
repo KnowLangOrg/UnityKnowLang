@@ -10,7 +10,8 @@
   "licensesUrl": "https://github.com/KnowLangOrg/UnityKnowLang/blob/main/LICENSE.md",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1",
-    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm"
+    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm",
+    "com.unity.nuget.icsharpcode.sharpziplib": "1.3.9"
   },
   "keywords": [
     "knowledge",

@@ -3,7 +3,8 @@
     "rootNamespace": "UnityKnowLang.Editor",
     "references": [
         "Unity.Nuget.Newtonsoft-Json",
-        "endel.nativewebsocket"
+        "endel.nativewebsocket",
+        "Unity.Nuget.ICSharpCode.SharpZipLib"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,4 +1,3 @@
-// Assets/UnityKnowLang/Editor/Scripts/KnowLangServerManger.cs
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -8,13 +7,16 @@ using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
+using Unity.SharpZipLib.Tar;
+using Unity.SharpZipLib.GZip;
 
 namespace UnityKnowLang.Editor
 {
     /// <summary>
     /// Manages the lifecycle of the Python FastAPI service for Unity integration
+    /// Supports both .unitypackage and UPM installation by auto-extracting binaries
     /// </summary>
-    public class KnowLangServerManger : IDisposable
+    public class KnowLangServerManager : IDisposable
     {
         #region Events
         public event System.Action<ServiceStatus> OnStatusChanged;
@@ -35,7 +37,7 @@ namespace UnityKnowLang.Editor
         #endregion
 
         #region Constructor & Disposal
-        public KnowLangServerManger(ServiceConfig config = null)
+        public KnowLangServerManager(ServiceConfig config = null)
         {
             this.config = config ?? new ServiceConfig();
             
@@ -73,11 +75,19 @@ namespace UnityKnowLang.Editor
                 SetStatus(ServiceStatus.Starting);
                 LogMessage("Starting KnowLang Python service...");
 
+                // Ensure binaries are extracted and available
+                if (!await EnsureBinariesAsync())
+                {
+                    LogError("Failed to prepare KnowLang binaries");
+                    SetStatus(ServiceStatus.Error);
+                    return false;
+                }
+
                 // Find the Python service executable
                 string executablePath = FindServiceExecutable();
                 if (string.IsNullOrEmpty(executablePath))
                 {
-                    LogError("Python service executable not found. Please ensure the KnowLang package is properly installed.");
+                    LogError("Python service executable not found after extraction. Please check the archive contents.");
                     SetStatus(ServiceStatus.Error);
                     return false;
                 }
@@ -164,6 +174,252 @@ namespace UnityKnowLang.Editor
         }
         #endregion
 
+        #region Binary Management - THE GENIUS SOLUTION! 🧠✨
+        /// <summary>
+        /// Ensures KnowLang binaries are available by extracting from StreamingAssets if needed
+        /// This handles both .unitypackage and UPM installation methods
+        /// </summary>
+        private async Task<bool> EnsureBinariesAsync()
+        {
+            try
+            {
+                string targetBinaryPath = GetTargetBinaryPath();
+                
+                // Check if binaries already exist (e.g., from UPM with .knowlang folder)
+                if (File.Exists(targetBinaryPath))
+                {
+                    LogMessage($"✅ KnowLang binaries found at: {targetBinaryPath}");
+                    return true;
+                }
+
+                LogMessage("KnowLang binaries not found. Checking for archive in StreamingAssets...");
+
+                // Look for archive in StreamingAssets
+                string archivePath = FindBinaryArchive();
+                if (string.IsNullOrEmpty(archivePath))
+                {
+                    LogError("No KnowLang binary archive found in StreamingAssets. Please ensure the package is properly installed.");
+                    return false;
+                }
+
+                LogMessage($"Found binary archive: {archivePath}");
+
+                // Extract the archive
+                return await ExtractBinaryArchiveAsync(archivePath);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error ensuring binaries: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the target path where the main binary should be located
+        /// </summary>
+        private string GetTargetBinaryPath()
+        {
+            string packageRoot = GetPackageRoot();
+            string executableName = GetExecutableName();
+            return Path.Combine(packageRoot, ".knowlang", executableName);
+        }
+
+        /// <summary>
+        /// Gets the root directory of the UnityKnowLang package
+        /// </summary>
+        private string GetPackageRoot()
+        {
+            // Try to find the package root by looking for package.json
+            string currentDir = Path.GetDirectoryName(Application.dataPath);
+            
+            // For UPM packages
+            string[] upmPaths = {
+                Path.Combine(currentDir, "Packages", "com.knowlang.unityknowlang"),
+                Path.Combine(currentDir, "Library", "PackageCache", "com.knowlang.unityknowlang@*")
+            };
+
+            foreach (string upmPath in upmPaths)
+            {
+                if (Directory.Exists(upmPath) && File.Exists(Path.Combine(upmPath, "package.json")))
+                {
+                    return upmPath;
+                }
+            }
+
+            // For .unitypackage installation (Assets folder)
+            string assetsPath = Path.Combine(currentDir, "Assets", "UnityKnowLang");
+            if (Directory.Exists(assetsPath))
+            {
+                return assetsPath;
+            }
+
+            // Fallback to Assets/UnityKnowLang
+            return assetsPath;
+        }
+
+        /// <summary>
+        /// Finds the binary archive in StreamingAssets
+        /// </summary>
+        private string FindBinaryArchive()
+        {
+            string streamingAssetsPath = GetStreamingAssetsPath();
+            
+            if (!Directory.Exists(streamingAssetsPath))
+            {
+                LogMessage($"StreamingAssets directory not found: {streamingAssetsPath}");
+                return null;
+            }
+
+            // Look for platform-specific archives first
+            string platformSpecific = Path.Combine(streamingAssetsPath, $"knowlang-{GetPlatformName()}.tar.gz");
+            if (File.Exists(platformSpecific))
+            {
+                return platformSpecific;
+            }
+
+            // Look for generic archives
+            string[] archivePatterns = {
+                "knowlang-*.tar.gz",
+                "knowlang.tar.gz",
+                "*.tar.gz"
+            };
+
+            foreach (string pattern in archivePatterns)
+            {
+                string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, pattern);
+                if (matchingFiles.Length > 0)
+                {
+                    return matchingFiles[0]; // Return first match
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the StreamingAssets path for the current context
+        /// </summary>
+        private string GetStreamingAssetsPath()
+        {
+            // In Editor, check both package locations
+            string packageRoot = GetPackageRoot();
+            string packageStreamingAssets = Path.Combine(packageRoot, "StreamingAssets");
+            
+            if (Directory.Exists(packageStreamingAssets))
+            {
+                return packageStreamingAssets;
+            }
+
+            // Fallback to Unity's default StreamingAssets
+            return Path.Combine(Application.dataPath, "StreamingAssets");
+        }
+
+        /// <summary>
+        /// Extracts the binary archive to the target location
+        /// </summary>
+        private async Task<bool> ExtractBinaryArchiveAsync(string archivePath)
+        {
+            try
+            {
+                LogMessage($"Extracting KnowLang binaries from: {archivePath}");
+
+                string packageRoot = GetPackageRoot();
+                string extractionTarget = Path.Combine(packageRoot, ".knowlang");
+
+                // Create target directory if it doesn't exist
+                if (!Directory.Exists(extractionTarget))
+                {
+                    Directory.CreateDirectory(extractionTarget);
+                }
+
+                // Extract the tar.gz archive
+                await Task.Run(() => ExtractTarGz(archivePath, extractionTarget));
+
+                // Verify extraction
+                string targetBinaryPath = GetTargetBinaryPath();
+                if (File.Exists(targetBinaryPath))
+                {
+                    // Make executable on Unix systems
+                    await MakeExecutableAsync(targetBinaryPath);
+                    
+                    LogMessage($"✅ Successfully extracted KnowLang binaries to: {extractionTarget}");
+                    return true;
+                }
+                else
+                {
+                    LogError($"Extraction completed but binary not found at expected location: {targetBinaryPath}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to extract binary archive: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Extracts a tar.gz archive to the specified directory
+        /// </summary>
+        private void ExtractTarGz(string archivePath, string extractPath)
+        {
+            using (var fileStream = new FileStream(archivePath, FileMode.Open, FileAccess.Read))
+            using (var gzipStream = new GZipInputStream(fileStream))
+            using (var tarArchive = TarArchive.CreateInputTarArchive(gzipStream, System.Text.Encoding.UTF8))
+            {
+                tarArchive.ExtractContents(extractPath);
+            }
+        }
+
+        /// <summary>
+        /// Makes a file executable on Unix systems
+        /// </summary>
+        private async Task MakeExecutableAsync(string filePath)
+        {
+            try
+            {
+#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+                await Task.Run(() =>
+                {
+                    var chmodProcess = new Process
+                    {
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = "chmod",
+                            Arguments = $"+x \"{filePath}\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        }
+                    };
+                    chmodProcess.Start();
+                    chmodProcess.WaitForExit();
+                });
+                LogMessage($"Made executable: {filePath}");
+#endif
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Warning: Could not make file executable: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the platform name for archive selection
+        /// </summary>
+        private string GetPlatformName()
+        {
+#if UNITY_EDITOR_WIN
+            return "windows";
+#elif UNITY_EDITOR_OSX
+            return "macos";
+#elif UNITY_EDITOR_LINUX
+            return "linux";
+#else
+            return "unknown";
+#endif
+        }
+        #endregion
+
         #region Service Health Monitoring
         public async Task<bool> CheckServiceHealthAsync()
         {
@@ -225,17 +481,14 @@ namespace UnityKnowLang.Editor
         #region Python Process Management
         private string FindServiceExecutable()
         {
-            string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            string executableName = GetExecutableName();
-            // prefix the . so that Unity can ignore it
-            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", ".knowlang", executableName);
+            string targetPath = GetTargetBinaryPath();
             
-            if (File.Exists(devPath))
+            if (File.Exists(targetPath))
             {
-                return devPath;
+                return targetPath;
             }
 
-            LogError($"Service executable not found at expected paths:\n- {devPath}");
+            LogError($"Service executable not found at: {targetPath}");
             return null;
         }
 
@@ -284,30 +537,17 @@ namespace UnityKnowLang.Editor
             }
         }
 
-        private string GetPlatformFolder()
-        {
-            #if UNITY_EDITOR_WIN
-                return "Windows";
-            #elif UNITY_EDITOR_OSX
-                return "macOS";
-            #elif UNITY_EDITOR_LINUX
-                return "Linux";
-            #else
-                return "Unknown";
-            #endif
-        }
-
         private string GetExecutableName()
         {
-            #if UNITY_EDITOR_WIN
-                return "main.exe";
-            #elif UNITY_EDITOR_OSX
-                return "main";
-            #elif UNITY_EDITOR_LINUX
-                return "main";
-            #else
-                return "main";
-            #endif
+#if UNITY_EDITOR_WIN
+            return "main.exe";
+#elif UNITY_EDITOR_OSX
+            return "main";
+#elif UNITY_EDITOR_LINUX
+            return "main";
+#else
+            return "main";
+#endif
         }
         #endregion
 
@@ -359,12 +599,14 @@ namespace UnityKnowLang.Editor
 
         private void LogMessage(string message)
         {
+            UnityEngine.Debug.Log($"[KnowLang] {message}");
             logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
         }
 
         private void LogError(string error)
         {
-            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {error}");
+            UnityEngine.Debug.LogError($"[KnowLang] {error}");
+            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR: {error}");
         }
         #endregion
     }
