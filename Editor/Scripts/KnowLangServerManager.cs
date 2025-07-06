@@ -225,28 +225,17 @@ namespace UnityKnowLang.Editor
         #region Python Process Management
         private string FindServiceExecutable()
         {
-            // Get the platform-specific executable path
-            string platform = GetPlatformFolder();
-            string executableName = GetExecutableName();
-            
-            string streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, "KnowLang", platform, executableName);
-            
-            if (File.Exists(streamingAssetsPath))
-            {
-                return streamingAssetsPath;
-            }
-
-            // Fallback: check if we're in development mode
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
+            string executableName = GetExecutableName();
             // prefix the . so that Unity can ignore it
-            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", ".StreamingAssets", "KnowLang", platform, executableName);
+            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", ".knowlang", executableName);
             
             if (File.Exists(devPath))
             {
                 return devPath;
             }
 
-            LogError($"Service executable not found at expected paths:\n- {streamingAssetsPath}\n- {devPath}");
+            LogError($"Service executable not found at expected paths:\n- {devPath}");
             return null;
         }
 
