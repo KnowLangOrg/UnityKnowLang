@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
-using Unity.SharpZipLib.Tar;
-using Unity.SharpZipLib.GZip;
 
 namespace UnityKnowLang.Editor
 {
@@ -315,7 +313,7 @@ namespace UnityKnowLang.Editor
         }
 
         /// <summary>
-        /// Extracts the binary archive to the target location
+        /// Extracts the binary archive using native OS commands to preserve symbolic links
         /// </summary>
         private async Task<bool> ExtractBinaryArchiveAsync(string archivePath)
         {
@@ -327,21 +325,26 @@ namespace UnityKnowLang.Editor
                 string extractionTarget = Path.Combine(packageRoot, ".knowlang");
 
                 // Create target directory if it doesn't exist
-                if (!Directory.Exists(extractionTarget))
+                if (Directory.Exists(extractionTarget))
                 {
-                    Directory.CreateDirectory(extractionTarget);
+                    // Clean existing directory to avoid conflicts
+                    Directory.Delete(extractionTarget, true);
                 }
+                Directory.CreateDirectory(extractionTarget);
 
-                // Extract the tar.gz archive
-                await Task.Run(() => ExtractTarGz(archivePath, extractionTarget));
+                // Extract using platform-specific commands
+                bool success = await ExtractArchiveNative(archivePath, extractionTarget);
+                
+                if (!success)
+                {
+                    LogError("Native extraction failed. Please ensure tar command is available on your system.");
+                    return false;
+                }
 
                 // Verify extraction
                 string targetBinaryPath = GetTargetBinaryPath();
                 if (File.Exists(targetBinaryPath))
                 {
-                    // Make executable on Unix systems
-                    await MakeExecutableAsync(targetBinaryPath);
-                    
                     LogMessage($"✅ Successfully extracted KnowLang binaries to: {extractionTarget}");
                     return true;
                 }
@@ -359,49 +362,130 @@ namespace UnityKnowLang.Editor
         }
 
         /// <summary>
-        /// Extracts a tar.gz archive to the specified directory
+        /// Extracts archive using native OS commands (preserves symlinks)
         /// </summary>
-        private void ExtractTarGz(string archivePath, string extractPath)
-        {
-            using (var fileStream = new FileStream(archivePath, FileMode.Open, FileAccess.Read))
-            using (var gzipStream = new GZipInputStream(fileStream))
-            using (var tarArchive = TarArchive.CreateInputTarArchive(gzipStream, System.Text.Encoding.UTF8))
-            {
-                tarArchive.ExtractContents(extractPath);
-            }
-        }
-
-        /// <summary>
-        /// Makes a file executable on Unix systems
-        /// </summary>
-        private async Task MakeExecutableAsync(string filePath)
+        private async Task<bool> ExtractArchiveNative(string archivePath, string extractPath)
         {
             try
             {
-#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-                await Task.Run(() =>
+                return await Task.Run(() =>
                 {
-                    var chmodProcess = new Process
-                    {
-                        StartInfo = new ProcessStartInfo
-                        {
-                            FileName = "chmod",
-                            Arguments = $"+x \"{filePath}\"",
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        }
-                    };
-                    chmodProcess.Start();
-                    chmodProcess.WaitForExit();
-                });
-                LogMessage($"Made executable: {filePath}");
+#if UNITY_EDITOR_WIN
+                    return ExtractOnWindows(archivePath, extractPath);
+#elif UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+                    return ExtractOnUnix(archivePath, extractPath);
+#else
+                    LogError("Unsupported platform for native extraction");
+                    return false;
 #endif
+                });
             }
             catch (Exception ex)
             {
-                LogMessage($"Warning: Could not make file executable: {ex.Message}");
+                LogError($"Native extraction failed: {ex.Message}");
+                return false;
             }
         }
+
+#if UNITY_EDITOR_WIN
+        /// <summary>
+        /// Windows extraction using tar command (Windows 10+ has built-in tar)
+        /// </summary>
+        private bool ExtractOnWindows(string archivePath, string extractPath)
+        {
+            try
+            {
+                // Try Windows 10+ built-in tar first
+                if (RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\""))
+                {
+                    LogMessage("✅ Extracted using Windows built-in tar");
+                    return true;
+                }
+
+                LogError("Windows extraction failed. Please ensure you're using Windows 10+ which supports tar command natively.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Windows extraction failed: {ex.Message}");
+                return false;
+            }
+        }
+
+#endif
+
+#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+        /// <summary>
+        /// Unix extraction using tar command (preserves symlinks perfectly)
+        /// </summary>
+        private bool ExtractOnUnix(string archivePath, string extractPath)
+        {
+            try
+            {
+                // Use tar command - handles symlinks perfectly
+                bool success = RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\"");
+                
+                if (success)
+                {
+                    LogMessage("✅ Extracted using Unix tar (symlinks preserved)");
+                    return true;
+                }
+
+                LogError("tar command failed");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Unix extraction failed: {ex.Message}");
+                return false;
+            }
+        }
+#endif
+
+        /// <summary>
+        /// Runs a command and waits for completion
+        /// </summary>
+        private bool RunCommand(string command, string arguments)
+        {
+            try
+            {
+                var processInfo = new ProcessStartInfo
+                {
+                    FileName = command,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using (var process = new Process { StartInfo = processInfo })
+                {
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+
+                    if (process.ExitCode == 0)
+                    {
+                        if (!string.IsNullOrEmpty(output))
+                            LogMessage($"Command output: {output}");
+                        return true;
+                    }
+                    else
+                    {
+                        LogError($"Command failed (exit code {process.ExitCode}): {error}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to run command '{command} {arguments}': {ex.Message}");
+                return false;
+            }
+        }
+
 
         /// <summary>
         /// Gets the platform name for archive selection
@@ -599,13 +683,11 @@ namespace UnityKnowLang.Editor
 
         private void LogMessage(string message)
         {
-            UnityEngine.Debug.Log($"[KnowLang] {message}");
             logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
         }
 
         private void LogError(string error)
         {
-            UnityEngine.Debug.LogError($"[KnowLang] {error}");
             logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR: {error}");
         }
         #endregion
