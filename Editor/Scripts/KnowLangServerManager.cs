@@ -215,28 +215,18 @@ namespace UnityKnowLang.Editor
                 return null;
             }
 
-            // Look for platform-specific archives first
-            string platformSpecific = Path.Combine(streamingAssetsPath, $"knowlang-{platformHelper.GetPlatformName()}.tar.gz");
-            if (File.Exists(platformSpecific))
+            string searchPattern = $"knowlang*{platformHelper.GetPlatformName()}*.tar.gz";
+            string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, searchPattern);
+
+            if (matchingFiles.Length > 0)
             {
-                return platformSpecific;
+                return matchingFiles[0]; // Return first match
             }
-
-            // Look for generic archives
-            string[] archivePatterns = {
-                "*.tar.gz"
-            };
-
-            foreach (string pattern in archivePatterns)
+            else
             {
-                string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, pattern);
-                if (matchingFiles.Length > 0)
-                {
-                    return matchingFiles[0]; // Return first match
-                }
+                logger.LogMessage($"No platform-specific archive found in: {streamingAssetsPath} for pattern: {searchPattern}");
+                return null;
             }
-
-            return null;
         }
 
         private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string packageRoot)
