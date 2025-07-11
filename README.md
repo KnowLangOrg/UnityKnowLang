@@ -12,6 +12,7 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 - 🔌 **HTTP Communication**: Connects to KnowLang backend via HTTP
 
 ## Prerequisites
+
 1. **Unity 6.0+**: Compatible with Unity 6.0 and newer
 
 ## Installation
@@ -43,13 +44,22 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 
 ### 2. Resolve Dependencies
 
-UnityKnowLang uses Newtonsoft.Json for JSON serialization. Follow these steps to ensure proper dependency resolution:
+UnityKnowLang uses Newtonsoft.Json for JSON serialization and NativeWebSocket for real-time communication. Follow these steps to ensure proper dependency resolution:
 
 #### Option A: Via Package Manager (Recommended)
 
+**Install Newtonsoft.Json:**
+
 1. Open Unity Package Manager (`Window > Package Manager`)
-2. Switch to `Unity Registry` in the dropdown
-3. Search for `Newtonsoft Json`
+2. Click the `+` button and select `Install package by name`
+3. Enter: `com.unity.nuget.newtonsoft-json`
+4. Click `Install` to add it to your project
+
+**Install NativeWebSocket:**
+
+1. Open Unity Package Manager (`Window > Package Manager`)
+2. Click the `+` button and select `Install package from git URL`
+3. Enter: `https://github.com/endel/NativeWebSocket.git#upm`
 4. Click `Install` to add it to your project
 
 #### Option B: Via manifest.json
@@ -57,11 +67,12 @@ UnityKnowLang uses Newtonsoft.Json for JSON serialization. Follow these steps to
 1. Open `Packages/manifest.json` in your project
 2. Add the following dependency to the `dependencies` section:
    ```json
-   "com.unity.nuget.newtonsoft-json": "3.2.1"
+   "com.unity.nuget.newtonsoft-json": "3.2.1",
+   "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm"
    ```
 3. Save the file and let Unity resolve the dependency
 
-> TODO: ideally, UnityKnowLang should be properly configured to specify this dependency to prevent manual configruation.
+> TODO: ideally, UnityKnowLang should be properly configured to specify this dependency to prevent manual configuration.
 
 ## Usage
 
@@ -80,6 +91,7 @@ Modify connection settings in your Unity project settings or via the plugin inte
 ## Troubleshooting
 
 ### Connection Issues
+
 - Verify KnowLang backend is running
 - Check HTTP connections are enabled in Unity
 - Ensure firewall allows connections to backend
