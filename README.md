@@ -12,6 +12,7 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 - 🔌 **HTTP Communication**: Connects to KnowLang backend via HTTP
 
 ## Prerequisites
+
 1. **Unity 6.0+**: Compatible with Unity 6.0 and newer
 
 ## Installation
@@ -46,24 +47,35 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 
 ### 2. Resolve Dependencies
 
+
 Follow these steps to ensure proper dependency resolution:
 
 #### Option A: Via Package Manager (Recommended)
 
+**Install Newtonsoft.Json:**
+
 1. Open Unity Package Manager (`Window > Package Manager`)
+
 2. Switch to `Unity Registry` in the dropdown
 3. Search for the dependencies specified in [package.json](package.json)
    - For example, search for `Newtonsoft.Json`
    - Ensure the version matches the one specified in `package.json`
+
 4. Click `Install` to add it to your project
 
 #### Option B: Via manifest.json
 
 1. Open `Packages/manifest.json` in your project
+
 2. Add the dependencies specified in [package.json](package.json) into the `dependencies` section
-3. Save the file and let Unity resolve the dependency
+    ```json
+   "com.unity.nuget.newtonsoft-json": "3.2.1",
+   "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm"
+   ```
+4. Save the file and let Unity resolve the dependency
 
 > Manual dependency resolution is not required when using the Package Manager method, as Unity will automatically handle it.
+
 
 ## Usage
 
@@ -82,6 +94,7 @@ Modify connection settings in your Unity project settings or via the plugin inte
 ## Troubleshooting
 
 ### Connection Issues
+
 - Verify KnowLang backend is running
 - Check HTTP connections are enabled in Unity
 - Ensure firewall allows connections to backend
