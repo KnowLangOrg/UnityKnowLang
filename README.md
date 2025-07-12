@@ -23,12 +23,15 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 2. Click `+` and select `Add package from git URL`
 3. Enter: `https://github.com/knowlangorg/unityknowlang.git`
 
-### Via Package Manager (Local)
+### Via .unitypackage installation (Local)
 
-1. Download/clone this repository
-2. Open Unity Package Manager (`Window > Package Manager`)
-3. Click `+` and select `Add package from disk`
-4. Navigate to the package folder and select `package.json`
+1. Download the .unitypackage file from the repository
+2. Open Unity and go to `Assets > Import Package > Custom Package`
+3. Select the downloaded .unitypackage file
+4. Click `Import` to add the package to your project
+5. Ensure all files are selected and click `Import`
+6. The plugin will be added to your project under `Assets/UnityKnowLang`
+7. Refer to the [Setup](#setup) section to resolve dependencies
 
 ## Setup
 
@@ -44,35 +47,35 @@ Unity plugin providing an embedded chat interface for [KnowLang](https://github.
 
 ### 2. Resolve Dependencies
 
-UnityKnowLang uses Newtonsoft.Json for JSON serialization and NativeWebSocket for real-time communication. Follow these steps to ensure proper dependency resolution:
+
+Follow these steps to ensure proper dependency resolution:
 
 #### Option A: Via Package Manager (Recommended)
 
 **Install Newtonsoft.Json:**
 
 1. Open Unity Package Manager (`Window > Package Manager`)
-2. Click the `+` button and select `Install package by name`
-3. Enter: `com.unity.nuget.newtonsoft-json`
-4. Click `Install` to add it to your project
 
-**Install NativeWebSocket:**
+2. Switch to `Unity Registry` in the dropdown
+3. Search for the dependencies specified in [package.json](package.json)
+   - For example, search for `Newtonsoft.Json`
+   - Ensure the version matches the one specified in `package.json`
 
-1. Open Unity Package Manager (`Window > Package Manager`)
-2. Click the `+` button and select `Install package from git URL`
-3. Enter: `https://github.com/endel/NativeWebSocket.git#upm`
 4. Click `Install` to add it to your project
 
 #### Option B: Via manifest.json
 
 1. Open `Packages/manifest.json` in your project
-2. Add the following dependency to the `dependencies` section:
-   ```json
+
+2. Add the dependencies specified in [package.json](package.json) into the `dependencies` section
+    ```json
    "com.unity.nuget.newtonsoft-json": "3.2.1",
    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm"
    ```
-3. Save the file and let Unity resolve the dependency
+4. Save the file and let Unity resolve the dependency
 
-> TODO: ideally, UnityKnowLang should be properly configured to specify this dependency to prevent manual configuration.
+> Manual dependency resolution is not required when using the Package Manager method, as Unity will automatically handle it.
+
 
 ## Usage
 

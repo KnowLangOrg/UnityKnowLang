@@ -11,7 +11,7 @@ namespace UnityKnowLang.Editor
         private readonly Label statusLabel;
         private readonly Button actionButton;
         private readonly VisualElement statusDot;
-        private KnowLangServerManger serviceManager;
+        private KnowLangServerManager serviceManager;
 
         public ServiceStatusIndicator()
         {
@@ -55,7 +55,7 @@ namespace UnityKnowLang.Editor
             UpdateDisplay(ServiceStatus.Stopped);
         }
 
-        public void SetServiceManager(KnowLangServerManger manager)
+        public void SetServiceManager(KnowLangServerManager manager)
         {
             if (serviceManager != null)
             {

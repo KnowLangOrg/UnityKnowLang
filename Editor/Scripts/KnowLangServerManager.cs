@@ -1,6 +1,4 @@
-// Assets/UnityKnowLang/Editor/Scripts/KnowLangServerManger.cs
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -11,165 +9,492 @@ using UnityEngine.Networking;
 
 namespace UnityKnowLang.Editor
 {
+    
+    #region Platform Helper
     /// <summary>
-    /// Manages the lifecycle of the Python FastAPI service for Unity integration
+    /// Provides platform-specific utilities and path resolution
     /// </summary>
-    public class KnowLangServerManger : IDisposable
+    public class KnowLangPlatformHelper
     {
-        #region Events
-        public event System.Action<ServiceStatus> OnStatusChanged;
-        #endregion
+        const string kPackageName = "dev.knowlang.knowlang";
 
-        #region Properties
-        public ServiceStatus Status { get; private set; } = ServiceStatus.Stopped;
-        public string ServiceUrl => $"http://{config.Host}:{config.Port}{config.ApiPrefix}";
-        public bool IsRunning => Status == ServiceStatus.Running;
-        #endregion
-
-        #region Private Fields
-        private Process pythonProcess;
-        private readonly ServiceConfig config;
-        private UnityWebRequest healthCheckRequest;
-        private bool isDisposed = false;
-        private StreamWriter logFileWriter;
-        #endregion
-
-        #region Constructor & Disposal
-        public KnowLangServerManger(ServiceConfig config = null)
+        public string GetPlatformName()
         {
-            this.config = config ?? new ServiceConfig();
-            
-            // Subscribe to Unity events
-            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+#if UNITY_EDITOR_WIN
+            return "windows";
+#elif UNITY_EDITOR_OSX
+            return "macos";
+#elif UNITY_EDITOR_LINUX
+            return "linux";
+#else
+            return "unknown";
+#endif
+        }
+
+        public string GetExecutableName()
+        {
+#if UNITY_EDITOR_WIN
+            return "main.exe";
+#elif UNITY_EDITOR_OSX
+            return "main";
+#elif UNITY_EDITOR_LINUX
+            return "main";
+#else
+            return "main";
+#endif
+        }
+
+        public string GetPackageRoot()
+        {
+            // Try to find the package root by looking for package.json
+            string currentDir = Path.GetDirectoryName(Application.dataPath);
+
+            // For UPM packages
+            string[] upmPaths = {
+                Path.Combine(currentDir, "Packages", kPackageName),
+                Path.Combine(currentDir, "Library", "PackageCache", $"{kPackageName}@*")
+            };
+
+            foreach (string upmPath in upmPaths)
+            {
+                if (Directory.Exists(upmPath) && File.Exists(Path.Combine(upmPath, "package.json")))
+                {
+                    return upmPath;
+                }
+            }
+
+            // For .unitypackage installation (Assets folder)
+            string assetsPath = Path.Combine(currentDir, "Assets", "UnityKnowLang");
+            if (Directory.Exists(assetsPath))
+            {
+                return assetsPath;
+            }
+
+            // Fallback to Assets/UnityKnowLang
+            return assetsPath;
+        }
+
+        public string GetStreamingAssetsPath(string packageRoot)
+        {
+            // In Editor, check both package locations
+            string packageStreamingAssets = Path.Combine(packageRoot, "StreamingAssets");
+
+            if (Directory.Exists(packageStreamingAssets))
+            {
+                return packageStreamingAssets;
+            }
+
+            // Fallback to Unity's default StreamingAssets
+            return Path.Combine(Application.dataPath, "StreamingAssets");
+        }
+
+        public string GetTargetBinaryPath(string packageRoot)
+        {
+            string executableName = GetExecutableName();
+            return Path.Combine(packageRoot, ".knowlang", executableName);
+        }
+    }
+    #endregion
+
+    #region Logger
+    /// <summary>
+    /// Handles logging operations for the KnowLang service
+    /// </summary>
+    public class KnowLangLogger : IDisposable
+    {
+        private StreamWriter logFileWriter;
+        private bool isDisposed = false;
+
+        public void Initialize(string logDirectory)
+        {
+            try
+            {
+                string logFilePath = Path.Combine(logDirectory, "log.txt");
+                logFileWriter = new StreamWriter(logFilePath, append: true) { AutoFlush = true };
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"Failed to initialize logger: {ex.Message}");
+            }
+        }
+
+        public void LogMessage(string message)
+        {
+            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
+        }
+
+        public void LogError(string error)
+        {
+            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR: {error}");
         }
 
         public void Dispose()
         {
             if (isDisposed) return;
             
-            // Unsubscribe from Unity events
-            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-            AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
-            
-            // Stop service
-            StopService();
-            
+            logFileWriter?.Close();
+            logFileWriter?.Dispose();
+            logFileWriter = null;
             isDisposed = true;
         }
-        #endregion
+    }
+    #endregion
 
-        #region Service Lifecycle
-        public async Task<bool> StartServiceAsync()
+    #region Binary Manager
+    /// <summary>
+    /// Manages KnowLang binary extraction and availability
+    /// </summary>
+    public class KnowLangBinaryManager
+    {
+        private readonly KnowLangPlatformHelper platformHelper;
+        private readonly KnowLangLogger logger;
+
+        public KnowLangBinaryManager(KnowLangPlatformHelper platformHelper, KnowLangLogger logger)
         {
-            if (Status == ServiceStatus.Running || Status == ServiceStatus.Starting)
-            {
-                LogMessage("Service is already running or starting");
-                return true;
-            }
+            this.platformHelper = platformHelper;
+            this.logger = logger;
+        }
 
+        public async Task<bool> EnsureBinariesAsync()
+        {
             try
             {
-                SetStatus(ServiceStatus.Starting);
-                LogMessage("Starting KnowLang Python service...");
-
-                // Find the Python service executable
-                string executablePath = FindServiceExecutable();
-                if (string.IsNullOrEmpty(executablePath))
+                string packageRoot = platformHelper.GetPackageRoot();
+                string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
+                
+                // Check if binaries already exist (e.g., from UPM with .knowlang folder)
+                if (File.Exists(targetBinaryPath))
                 {
-                    LogError("Python service executable not found. Please ensure the KnowLang package is properly installed.");
-                    SetStatus(ServiceStatus.Error);
+                    logger.LogMessage($"✅ KnowLang binaries found at: {targetBinaryPath}");
+                    return true;
+                }
+
+                logger.LogMessage("KnowLang binaries not found. Checking for archive in StreamingAssets...");
+
+                // Look for archive in StreamingAssets
+                string archivePath = FindBinaryArchive(packageRoot);
+                if (string.IsNullOrEmpty(archivePath))
+                {
+                    logger.LogError("No KnowLang binary archive found in StreamingAssets. Please ensure the package is properly installed.");
                     return false;
                 }
 
-                // Configure the YAML files before starting the service
-                var configManager = new KnowLangConfigManager();
-                configManager.ConfigureYamlFiles(executablePath);
+                logger.LogMessage($"Found binary archive: {archivePath}");
 
-                // Start the Python process
-                if (!StartPythonProcess(executablePath))
+                // Extract the archive
+                return await ExtractBinaryArchiveAsync(archivePath, packageRoot);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Error ensuring binaries: {ex.Message}");
+                return false;
+            }
+        }
+
+        public string FindServiceExecutable()
+        {
+            string packageRoot = platformHelper.GetPackageRoot();
+            string targetPath = platformHelper.GetTargetBinaryPath(packageRoot);
+            
+            if (File.Exists(targetPath))
+            {
+                return targetPath;
+            }
+
+            logger.LogError($"Service executable not found at: {targetPath}");
+            return null;
+        }
+
+        private string FindBinaryArchive(string packageRoot)
+        {
+            string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
+            
+            if (!Directory.Exists(streamingAssetsPath))
+            {
+                logger.LogMessage($"StreamingAssets directory not found: {streamingAssetsPath}");
+                return null;
+            }
+
+            string searchPattern = $"knowlang*{platformHelper.GetPlatformName()}*.tar.gz";
+            string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, searchPattern);
+
+            if (matchingFiles.Length > 0)
+            {
+                return matchingFiles[0]; // Return first match
+            }
+            else
+            {
+                logger.LogMessage($"No platform-specific archive found in: {streamingAssetsPath} for pattern: {searchPattern}");
+                return null;
+            }
+        }
+
+        private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string packageRoot)
+        {
+            try
+            {
+                logger.LogMessage($"Extracting KnowLang binaries from: {archivePath}");
+
+                string extractionTarget = Path.Combine(packageRoot, ".knowlang");
+
+                // Create target directory if it doesn't exist
+                if (Directory.Exists(extractionTarget))
                 {
-                    SetStatus(ServiceStatus.Error);
+                    // Clean existing directory to avoid conflicts
+                    Directory.Delete(extractionTarget, true);
+                }
+                Directory.CreateDirectory(extractionTarget);
+
+                // Extract using platform-specific commands
+                bool success = await ExtractArchiveNative(archivePath, extractionTarget);
+                
+                if (!success)
+                {
+                    logger.LogError("Native extraction failed. Please ensure tar command is available on your system.");
                     return false;
                 }
 
-                // Wait for service to be ready
-                bool isReady = await WaitForServiceReady();
-                if (isReady)
+                // Verify extraction
+                string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
+                if (File.Exists(targetBinaryPath))
                 {
-                    SetStatus(ServiceStatus.Running);
-                    LogMessage($"✅ KnowLang service started successfully at {ServiceUrl}");
+                    logger.LogMessage($"✅ Successfully extracted KnowLang binaries to: {extractionTarget}");
                     return true;
                 }
                 else
                 {
-                    SetStatus(ServiceStatus.Error);
-                    LogError("Service failed to start within timeout period");
-                    StopService();
+                    logger.LogError($"Extraction completed but binary not found at expected location: {targetBinaryPath}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                LogError($"Failed to start service: {ex.Message}");
-                SetStatus(ServiceStatus.Error);
+                logger.LogError($"Failed to extract binary archive: {ex.Message}");
                 return false;
             }
         }
 
-        public void StopService()
+        private async Task<bool> ExtractArchiveNative(string archivePath, string extractPath)
         {
-            if (Status == ServiceStatus.Stopped || Status == ServiceStatus.Stopping)
-                return;
-
             try
             {
-                SetStatus(ServiceStatus.Stopping);
-                LogMessage("Stopping KnowLang service...");
+                return await Task.Run(() =>
+                {
+#if UNITY_EDITOR_WIN
+                    return ExtractOnWindows(archivePath, extractPath);
+#elif UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+                    return ExtractOnUnix(archivePath, extractPath);
+#else
+                    logger.LogError("Unsupported platform for native extraction");
+                    return false;
+#endif
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Native extraction failed: {ex.Message}");
+                return false;
+            }
+        }
 
-                // Cancel health check if running
-                healthCheckRequest?.Abort();
-                healthCheckRequest?.Dispose();
-                healthCheckRequest = null;
+#if UNITY_EDITOR_WIN
+        private bool ExtractOnWindows(string archivePath, string extractPath)
+        {
+            try
+            {
+                // Try Windows 10+ built-in tar first
+                if (RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\""))
+                {
+                    logger.LogMessage("✅ Extracted using Windows built-in tar");
+                    return true;
+                }
 
-                // Stop Python process
-                if (pythonProcess != null && !pythonProcess.HasExited)
+                logger.LogError("Windows extraction failed. Please ensure you're using Windows 10+ which supports tar command natively.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Windows extraction failed: {ex.Message}");
+                return false;
+            }
+        }
+#endif
+
+#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
+        private bool ExtractOnUnix(string archivePath, string extractPath)
+        {
+            try
+            {
+                // Use tar command - handles symlinks perfectly
+                bool success = RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\"");
+                
+                if (success)
+                {
+                    logger.LogMessage("✅ Extracted using Unix tar (symlinks preserved)");
+                    return true;
+                }
+
+                logger.LogError("tar command failed");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Unix extraction failed: {ex.Message}");
+                return false;
+            }
+        }
+#endif
+
+        private bool RunCommand(string command, string arguments)
+        {
+            try
+            {
+                var processInfo = new ProcessStartInfo
+                {
+                    FileName = command,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using (var process = new Process { StartInfo = processInfo })
+                {
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+
+                    if (process.ExitCode == 0)
+                    {
+                        if (!string.IsNullOrEmpty(output))
+                            logger.LogMessage($"Command output: {output}");
+                        return true;
+                    }
+                    else
+                    {
+                        logger.LogError($"Command failed (exit code {process.ExitCode}): {error}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Failed to run command '{command} {arguments}': {ex.Message}");
+                return false;
+            }
+        }
+    }
+    #endregion
+
+    #region Process Manager
+    /// <summary>
+    /// Manages the Python process lifecycle for the KnowLang service
+    /// </summary>
+    public class KnowLangProcessManager : IDisposable
+    {
+        private Process pythonProcess;
+        private readonly KnowLangLogger logger;
+        private bool isDisposed = false;
+
+        public KnowLangProcessManager(KnowLangLogger logger)
+        {
+            this.logger = logger;
+        }
+
+        public bool StartProcess(string executablePath, ServiceConfig config)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = executablePath,
+                    Arguments = config.GetCommandLineArgs(),
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    WorkingDirectory = Path.GetDirectoryName(executablePath)
+                };
+
+                pythonProcess = new Process { StartInfo = startInfo };
+                
+                // Subscribe to output events
+                pythonProcess.OutputDataReceived += (sender, e) => {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        logger.LogMessage($"[Python] {e.Data}");
+                };
+                
+                pythonProcess.ErrorDataReceived += (sender, e) => {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        logger.LogError($"[Python Error] {e.Data}");
+                };
+
+                pythonProcess.Start();
+                pythonProcess.BeginOutputReadLine();
+                pythonProcess.BeginErrorReadLine();
+
+                logger.LogMessage($"Python service process started (PID: {pythonProcess.Id})");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Failed to start Python process: {ex.Message}");
+                return false;
+            }
+        }
+
+        public void StopProcess()
+        {
+            if (IsProcessRunning)
+            {
+                try
                 {
                     pythonProcess.Kill();
                     pythonProcess.WaitForExit(5000); // Wait up to 5 seconds
                     pythonProcess.Dispose();
                     pythonProcess = null;
                 }
-
-                logFileWriter?.Close();
-                logFileWriter?.Dispose();
-                logFileWriter = null;
-
-                SetStatus(ServiceStatus.Stopped);
-                LogMessage("✅ KnowLang service stopped");
-            }
-            catch (Exception ex)
-            {
-                LogError($"Error stopping service: {ex.Message}");
-                SetStatus(ServiceStatus.Error);
+                catch (Exception ex)
+                {
+                    logger.LogError($"Error stopping Python process: {ex.Message}");
+                }
             }
         }
 
-        public async Task<bool> RestartServiceAsync()
+        public bool IsProcessRunning => pythonProcess != null && !pythonProcess.HasExited;
+
+        public void Dispose()
         {
-            LogMessage("Restarting KnowLang service...");
-            StopService();
-            await Task.Delay(1000); // Brief pause
-            return await StartServiceAsync();
+            if (isDisposed) return;
+            
+            StopProcess();
+            isDisposed = true;
         }
-        #endregion
+    }
+    #endregion
 
-        #region Service Health Monitoring
-        public async Task<bool> CheckServiceHealthAsync()
+    #region Health Monitor
+    /// <summary>
+    /// Monitors service health and readiness
+    /// </summary>
+    public class KnowLangHealthMonitor : IDisposable
+    {
+        private readonly KnowLangLogger logger;
+        private UnityWebRequest healthCheckRequest;
+        private bool isDisposed = false;
+
+        public KnowLangHealthMonitor(KnowLangLogger logger)
+        {
+            this.logger = logger;
+        }
+
+        public async Task<bool> CheckServiceHealthAsync(string serviceUrl)
         {
             try
             {
-                using (var request = UnityWebRequest.Get($"{ServiceUrl}/health"))
+                using (var request = UnityWebRequest.Get($"{serviceUrl}/health"))
                 {
                     request.timeout = 5;
                     
@@ -191,19 +516,19 @@ namespace UnityKnowLang.Editor
             }
             catch (Exception ex)
             {
-                LogError($"Health check failed: {ex.Message}");
+                logger.LogError($"Health check failed: {ex.Message}");
             }
             
             return false;
         }
 
-        private async Task<bool> WaitForServiceReady(int timeoutSeconds = 60)
+        public async Task<bool> WaitForServiceReady(string serviceUrl, KnowLangProcessManager processManager, int timeoutSeconds = 60)
         {
-            LogMessage("Waiting for service to be ready...");
+            logger.LogMessage("Waiting for service to be ready...");
             
             for (int i = 0; i < timeoutSeconds; i++)
             {
-                if (await CheckServiceHealthAsync())
+                if (await CheckServiceHealthAsync(serviceUrl))
                 {
                     return true;
                 }
@@ -211,103 +536,204 @@ namespace UnityKnowLang.Editor
                 await Task.Delay(1000);
                 
                 // Check if process is still running
-                if (pythonProcess?.HasExited == true)
+                if (!processManager.IsProcessRunning)
                 {
-                    LogError("Python process exited unexpectedly");
+                    logger.LogError("Python process exited unexpectedly");
                     return false;
                 }
             }
             
             return false;
         }
-        #endregion
 
-        #region Python Process Management
-        private string FindServiceExecutable()
+        public void CancelHealthCheck()
         {
-            string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            string executableName = GetExecutableName();
-            // prefix the . so that Unity can ignore it
-            string devPath = Path.Combine(projectRoot, "Assets", "UnityKnowLang", ".knowlang", executableName);
-            
-            if (File.Exists(devPath))
-            {
-                return devPath;
-            }
-
-            LogError($"Service executable not found at expected paths:\n- {devPath}");
-            return null;
+            healthCheckRequest?.Abort();
+            healthCheckRequest?.Dispose();
+            healthCheckRequest = null;
         }
 
-        private bool StartPythonProcess(string executablePath)
+        public void Dispose()
         {
+            if (isDisposed) return;
+            
+            CancelHealthCheck();
+            isDisposed = true;
+        }
+    }
+    #endregion
+
+    #region Main Server Manager
+    /// <summary>
+    /// Manages the lifecycle of the Python FastAPI service for Unity integration
+    /// Supports both .unitypackage and UPM installation by auto-extracting binaries
+    /// </summary>
+    public class KnowLangServerManager : IDisposable
+    {
+        #region Events
+        public event System.Action<ServiceStatus> OnStatusChanged;
+        #endregion
+
+        #region Properties
+        public ServiceStatus Status { get; private set; } = ServiceStatus.Stopped;
+        public string ServiceUrl => $"http://{config.Host}:{config.Port}{config.ApiPrefix}";
+        public bool IsRunning => Status == ServiceStatus.Running;
+        #endregion
+
+        #region Private Fields
+        private readonly ServiceConfig config;
+        private readonly KnowLangPlatformHelper platformHelper;
+        private readonly KnowLangLogger logger;
+        private readonly KnowLangBinaryManager binaryManager;
+        private readonly KnowLangProcessManager processManager;
+        private readonly KnowLangHealthMonitor healthMonitor;
+        private bool isDisposed = false;
+        #endregion
+
+        #region Constructor & Disposal
+        public KnowLangServerManager(ServiceConfig config = null)
+        {
+            this.config = config ?? new ServiceConfig();
+            
+            // Initialize all managers
+            this.platformHelper = new KnowLangPlatformHelper();
+            this.logger = new KnowLangLogger();
+            this.binaryManager = new KnowLangBinaryManager(platformHelper, logger);
+            this.processManager = new KnowLangProcessManager(logger);
+            this.healthMonitor = new KnowLangHealthMonitor(logger);
+            
+            // Subscribe to Unity events
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+        }
+
+        public void Dispose()
+        {
+            if (isDisposed) return;
+            
+            // Unsubscribe from Unity events
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
+            
+            // Stop service and dispose managers
+            StopService();
+            
+            healthMonitor?.Dispose();
+            processManager?.Dispose();
+            logger?.Dispose();
+            
+            isDisposed = true;
+        }
+        #endregion
+
+        #region Service Lifecycle
+        public async Task<bool> StartServiceAsync()
+        {
+            if (Status == ServiceStatus.Running || Status == ServiceStatus.Starting)
+            {
+                logger.LogMessage("Service is already running or starting");
+                return true;
+            }
+
             try
             {
-                var startInfo = new ProcessStartInfo
+                SetStatus(ServiceStatus.Starting);
+                logger.LogMessage("Starting KnowLang Python service...");
+
+                // Ensure binaries are extracted and available
+                if (!await binaryManager.EnsureBinariesAsync())
                 {
-                    FileName = executablePath,
-                    Arguments = config.GetCommandLineArgs(),
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    WorkingDirectory = Path.GetDirectoryName(executablePath)
-                };
+                    logger.LogError("Failed to prepare KnowLang binaries");
+                    SetStatus(ServiceStatus.Error);
+                    return false;
+                }
 
-                pythonProcess = new Process { StartInfo = startInfo };
+                // Find the Python service executable
+                string executablePath = binaryManager.FindServiceExecutable();
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    logger.LogError("Python service executable not found after extraction. Please check the archive contents.");
+                    SetStatus(ServiceStatus.Error);
+                    return false;
+                }
 
-                string logFilePath = Path.Combine(Path.GetDirectoryName(executablePath), "log.txt");
-                logFileWriter = new StreamWriter(logFilePath, append: true) { AutoFlush = true };
-                
-                // Subscribe to output events
-                pythonProcess.OutputDataReceived += (sender, e) => {
-                    if (!string.IsNullOrEmpty(e.Data))
-                        LogMessage($"[Python] {e.Data}");
-                };
-                
-                pythonProcess.ErrorDataReceived += (sender, e) => {
-                    if (!string.IsNullOrEmpty(e.Data))
-                        LogError($"[Python Error] {e.Data}");
-                };
+                // Initialize logger with the executable directory
+                logger.Initialize(Path.GetDirectoryName(executablePath));
 
-                pythonProcess.Start();
-                pythonProcess.BeginOutputReadLine();
-                pythonProcess.BeginErrorReadLine();
+                // Configure the YAML files before starting the service
+                var configManager = new KnowLangConfigManager();
+                configManager.ConfigureYamlFiles(executablePath);
 
-                LogMessage($"Python service process started (PID: {pythonProcess.Id})");
-                return true;
+                // Start the Python process
+                if (!processManager.StartProcess(executablePath, config))
+                {
+                    SetStatus(ServiceStatus.Error);
+                    return false;
+                }
+
+                // Wait for service to be ready
+                bool isReady = await healthMonitor.WaitForServiceReady(ServiceUrl, processManager);
+                if (isReady)
+                {
+                    SetStatus(ServiceStatus.Running);
+                    logger.LogMessage($"✅ KnowLang service started successfully at {ServiceUrl}");
+                    return true;
+                }
+                else
+                {
+                    SetStatus(ServiceStatus.Error);
+                    logger.LogError("Service failed to start within timeout period");
+                    StopService();
+                    return false;
+                }
             }
             catch (Exception ex)
             {
-                LogError($"Failed to start Python process: {ex.Message}");
+                logger.LogError($"Failed to start service: {ex.Message}");
+                SetStatus(ServiceStatus.Error);
                 return false;
             }
         }
 
-        private string GetPlatformFolder()
+        public void StopService()
         {
-            #if UNITY_EDITOR_WIN
-                return "Windows";
-            #elif UNITY_EDITOR_OSX
-                return "macOS";
-            #elif UNITY_EDITOR_LINUX
-                return "Linux";
-            #else
-                return "Unknown";
-            #endif
+            if (Status == ServiceStatus.Stopped || Status == ServiceStatus.Stopping)
+                return;
+
+            try
+            {
+                SetStatus(ServiceStatus.Stopping);
+                logger.LogMessage("Stopping KnowLang service...");
+
+                // Cancel health check if running
+                healthMonitor.CancelHealthCheck();
+
+                // Stop Python process
+                processManager.StopProcess();
+
+                SetStatus(ServiceStatus.Stopped);
+                logger.LogMessage("✅ KnowLang service stopped");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Error stopping service: {ex.Message}");
+                SetStatus(ServiceStatus.Error);
+            }
         }
 
-        private string GetExecutableName()
+        public async Task<bool> RestartServiceAsync()
         {
-            #if UNITY_EDITOR_WIN
-                return "main.exe";
-            #elif UNITY_EDITOR_OSX
-                return "main";
-            #elif UNITY_EDITOR_LINUX
-                return "main";
-            #else
-                return "main";
-            #endif
+            logger.LogMessage("Restarting KnowLang service...");
+            StopService();
+            await Task.Delay(1000); // Brief pause
+            return await StartServiceAsync();
+        }
+        #endregion
+
+        #region Service Health Monitoring
+        public async Task<bool> CheckServiceHealthAsync()
+        {
+            return await healthMonitor.CheckServiceHealthAsync(ServiceUrl);
         }
         #endregion
 
@@ -320,30 +746,11 @@ namespace UnityKnowLang.Editor
         private void OnBeforeAssemblyReload()
         {
             // Stop the service during assembly reload to prevent port conflicts
-            LogMessage("Assembly reload detected - stopping service to prevent port conflicts");
+            logger.LogMessage("Assembly reload detected - stopping service to prevent port conflicts");
             
             // Force stop the Python process without changing status events
             // since the manager instance will be destroyed anyway
-            if (pythonProcess != null && !pythonProcess.HasExited)
-            {
-                try
-                {
-                    LogMessage($"Killing Python process (PID: {pythonProcess.Id}) before assembly reload");
-                    pythonProcess.Kill();
-                    pythonProcess.WaitForExit(2000); // Wait up to 2 seconds
-                    pythonProcess.Dispose();
-                    pythonProcess = null;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Error killing Python process during assembly reload: {ex.Message}");
-                }
-            }
-            
-            // Clean up log file writer
-            logFileWriter?.Close();
-            logFileWriter?.Dispose();
-            logFileWriter = null;
+            processManager.StopProcess();
         }
         #endregion
 
@@ -356,18 +763,9 @@ namespace UnityKnowLang.Editor
                 OnStatusChanged?.Invoke(Status);
             }
         }
-
-        private void LogMessage(string message)
-        {
-            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
-        }
-
-        private void LogError(string error)
-        {
-            logFileWriter?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {error}");
-        }
         #endregion
     }
+    #endregion
 
     #region KnowLang Configuration Manager
     /// <summary>

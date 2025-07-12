@@ -21,7 +21,7 @@ namespace UnityKnowLang.Editor
         private Button sendButton;
         private Label statusLabel;
         private VisualElement chatContainer;
-        private KnowLangServerManger serviceManager;
+        private KnowLangServerManager serviceManager;
         private ServiceClient serviceClient;
         private ServiceStatusIndicator statusIndicator;
         // Track current streaming message for updates
@@ -667,7 +667,7 @@ namespace UnityKnowLang.Editor
                 AutoStart = settings.autoStartService
             };
 
-            serviceManager = new KnowLangServerManger(config);
+            serviceManager = new KnowLangServerManager(config);
             serviceClient = new ServiceClient(serviceManager.ServiceUrl);
 
             // Subscribe to service events
