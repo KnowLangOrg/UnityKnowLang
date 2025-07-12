@@ -5,6 +5,8 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System.Threading.Tasks;
 using System.IO;
+// Add Mixpanel using statement if your MixpanelService is in a different namespace.
+// For this example, assuming MixpanelService is in UnityKnowLang.Editor or globally accessible.
 
 namespace UnityKnowLang.Editor
 {
@@ -315,6 +317,9 @@ namespace UnityKnowLang.Editor
 
             try
             {
+                // Track Mixpanel Event
+                MixpanelService.TrackStreamChatRequestSent();
+
                 await serviceClient.StreamChatAsync(message, OnServerMessageReceived);
             }
             catch (Exception ex)
@@ -351,6 +356,9 @@ namespace UnityKnowLang.Editor
                 // Send empty object instead of null to satisfy FastAPI's body requirement
                 var result = await serviceClient.PostAsync<object>("/parse", new { });
                 
+                // Track Mixpanel Event
+                MixpanelService.TrackParseProjectButtonClicked();
+
                 AddSystemMessage("✅ Project parsing completed successfully!");
                 Debug.Log($"ParseProject: Success - {result}");
             }
@@ -770,6 +778,8 @@ namespace UnityKnowLang.Editor
             {
                 InitializeServiceManager();
             }
+            // Initialize Mixpanel Service
+            MixpanelService.Initialize();
         }
     }
 
