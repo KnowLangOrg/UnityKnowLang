@@ -318,7 +318,7 @@ namespace UnityKnowLang.Editor
             try
             {
                 // Track Mixpanel Event
-                MixpanelService.TrackStreamChatRequestSent();
+                MixpanelService.TrackStreamChatRequested();
 
                 await serviceClient.StreamChatAsync(message, OnServerMessageReceived);
             }
@@ -357,7 +357,7 @@ namespace UnityKnowLang.Editor
                 var result = await serviceClient.PostAsync<object>("/parse", new { });
                 
                 // Track Mixpanel Event
-                MixpanelService.TrackParseProjectButtonClicked();
+                MixpanelService.TrackParseProjectClicked();
 
                 AddSystemMessage("✅ Project parsing completed successfully!");
                 Debug.Log($"ParseProject: Success - {result}");
@@ -778,8 +778,6 @@ namespace UnityKnowLang.Editor
             {
                 InitializeServiceManager();
             }
-            // Initialize Mixpanel Service
-            MixpanelService.Initialize();
         }
     }
 

@@ -1,68 +1,141 @@
-using Mixpanel;
-using UnityEngine;
+using System;
 using System.Collections.Generic;
+using System.Text;
+using System.Net.Http;
+using System.Threading.Tasks;
+using UnityEngine;
+using Newtonsoft.Json;
 
 namespace UnityKnowLang.Editor
 {
+    /// <summary>
+    /// Minimal Mixpanel service for Unity Editor event tracking
+    /// Single responsibility: Track events with minimal setup
+    /// </summary>
     public static class MixpanelService
     {
-        private static MixpanelClient _client;
-        private static string _userId;
-        private const string MixpanelTokenPlaceholder = "YOUR_MIXPANEL_TOKEN_PLACEHOLDER";
+        // Replace with your actual Mixpanel project token
+        private const string MIXPANEL_TOKEN = "ec5727f25280a135d663a4257a2430b8";
+        private const string TRACK_URL = "https://api.mixpanel.com/track";
+        
+        private static readonly HttpClient _httpClient = new HttpClient();
+        private static readonly string _distinctId = SystemInfo.deviceUniqueIdentifier;
+        private static bool _isInitialized = false;
 
-        public static void Initialize()
+        /// <summary>
+        /// Initialize the service (called automatically on first use)
+        /// </summary>
+        private static void EnsureInitialized()
         {
-            if (_client != null)
+            if (!_isInitialized)
             {
-                Debug.Log("MixpanelService already initialized.");
+                _isInitialized = true;
+                Debug.Log($"MixpanelService initialized with DistinctId: {_distinctId}");
+            }
+        }
+
+        /// <summary>
+        /// Track an event with optional properties
+        /// </summary>
+        /// <param name="eventName">Name of the event</param>
+        /// <param name="properties">Optional event properties</param>
+        public static void TrackEvent(string eventName, Dictionary<string, object> properties = null)
+        {
+            if (string.IsNullOrEmpty(eventName))
+            {
+                Debug.LogWarning("MixpanelService: Event name cannot be null or empty");
                 return;
             }
 
-            _userId = SystemInfo.deviceUniqueIdentifier;
-            if (string.IsNullOrEmpty(_userId))
-            {
-                _userId = "editor_user_unknown"; // Fallback user ID
-                Debug.LogWarning("MixpanelService: deviceUniqueIdentifier is null or empty. Using fallback ID.");
-            }
-
-            // In a real Unity environment, MixpanelClient might require specific initialization
-            // for the Unity context, or it might work directly if its dependencies are met.
-            // For now, we assume direct instantiation works.
-            _client = new MixpanelClient(MixpanelTokenPlaceholder);
-            _client.Identify(_userId);
-
-            Debug.Log($"MixpanelService Initialized. User ID: {_userId}, Token: {MixpanelTokenPlaceholder}");
+            EnsureInitialized();
+            _ = TrackEventAsync(eventName, properties);
         }
 
-        public static void TrackEvent(string eventName, IDictionary<string, object> properties = null)
+        /// <summary>
+        /// Track an event asynchronously
+        /// </summary>
+        private static async Task TrackEventAsync(string eventName, Dictionary<string, object> properties)
         {
-            if (_client == null)
+            try
             {
-                Debug.LogError("MixpanelService not initialized. Call Initialize() first.");
-                return;
-            }
+                var eventData = CreateEventData(eventName, properties);
+                var jsonPayload = JsonConvert.SerializeObject(new[] { eventData });
+                var base64Payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(jsonPayload));
 
-            if (properties == null)
+                var formData = new Dictionary<string, string>
+                {
+                    {"data", base64Payload}
+                };
+
+                var formContent = new FormUrlEncodedContent(formData);
+                var response = await _httpClient.PostAsync(TRACK_URL, formContent);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    Debug.Log($"MixpanelService: Event '{eventName}' tracked successfully");
+                }
+                else
+                {
+                    Debug.LogWarning($"MixpanelService: Failed to track event '{eventName}'. Status: {response.StatusCode}");
+                }
+            }
+            catch (Exception ex)
             {
-                properties = new Dictionary<string, object>();
+                Debug.LogError($"MixpanelService: Error tracking event '{eventName}': {ex.Message}");
             }
-
-            // Add some default properties if needed, e.g., app version
-            // properties["$app_version_string"] = Application.version; // Example for Unity runtime
-
-            _client.Track(eventName, _userId, properties);
-            Debug.Log($"Mixpanel Event Tracked: {eventName}, User ID: {_userId}, Properties: {JsonUtility.ToJson(properties)}");
         }
 
-        // Example of a more specific tracking method if needed in the future
-        public static void TrackParseProjectButtonClicked()
+        /// <summary>
+        /// Create event data structure
+        /// </summary>
+        private static Dictionary<string, object> CreateEventData(string eventName, Dictionary<string, object> properties)
         {
-            TrackEvent("Parse Project Button Clicked");
+            // Default Mixpanel event properties
+            var eventProperties = new Dictionary<string, object>
+            {
+                {"token", MIXPANEL_TOKEN},
+                {"distinct_id", _distinctId},
+                {"time", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()},
+                {"$lib_version", "1.0.0"},
+                {"$os", SystemInfo.operatingSystemFamily.ToString()},
+                {"unity_version", Application.unityVersion},
+            };
+
+            // Add custom properties
+            if (properties != null)
+            {
+                foreach (var kvp in properties)
+                {
+                    eventProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return new Dictionary<string, object>
+            {
+                {"event", eventName},
+                {"properties", eventProperties}
+            };
         }
 
-        public static void TrackStreamChatRequestSent()
+        // Convenience methods for common plugin events
+        public static void TrackPluginOpened()
         {
-            TrackEvent("Stream Chat Request Sent");
+            TrackEvent("Plugin Opened");
+        }
+
+        public static void TrackParseProjectClicked()
+        {
+            TrackEvent("Parse Project Clicked");
+        }
+
+        public static void TrackStreamChatRequested()
+        {
+            TrackEvent("Stream Chat Requested");
+        }
+
+        public static void TrackRetrievedContextClick()
+        {
+            TrackEvent("Retrieved Context Clicked");
         }
     }
 }
