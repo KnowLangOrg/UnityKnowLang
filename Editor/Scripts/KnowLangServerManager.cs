@@ -142,17 +142,22 @@ namespace UnityKnowLang.Editor
 
     #region Binary Manager
     /// <summary>
-    /// Manages KnowLang binary extraction and availability
+    /// Manages KnowLang binary extraction and availability with download-on-demand capability
     /// </summary>
     public class KnowLangBinaryManager
     {
         private readonly KnowLangPlatformHelper platformHelper;
         private readonly KnowLangLogger logger;
+        
+        // Configuration for GitHub releases
+        private const string GITHUB_RELEASES_API = "https://api.github.com/repos";
+        private KnowLangConfig knowlangConfig;
 
         public KnowLangBinaryManager(KnowLangPlatformHelper platformHelper, KnowLangLogger logger)
         {
             this.platformHelper = platformHelper;
             this.logger = logger;
+            this.knowlangConfig = new KnowLangConfig();
         }
 
         public async Task<bool> EnsureBinariesAsync()
@@ -162,20 +167,34 @@ namespace UnityKnowLang.Editor
                 string packageRoot = platformHelper.GetPackageRoot();
                 string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
                 
-                // Check if binaries already exist (e.g., from UPM with .knowlang folder)
+                // Check if binaries already exist
                 if (File.Exists(targetBinaryPath))
                 {
                     logger.LogMessage($"✅ KnowLang binaries found at: {targetBinaryPath}");
                     return true;
                 }
 
-                logger.LogMessage("KnowLang binaries not found. Checking for archive in StreamingAssets...");
+                logger.LogMessage("KnowLang binaries not found. Checking for cached archive...");
 
-                // Look for archive in StreamingAssets
-                string archivePath = FindBinaryArchive(packageRoot);
+                // Look for cached archive first
+                string archivePath = FindCachedArchive();
+                
+                // If not cached, try local StreamingAssets (for backward compatibility)
                 if (string.IsNullOrEmpty(archivePath))
                 {
-                    logger.LogError("No KnowLang binary archive found in StreamingAssets. Please ensure the package is properly installed.");
+                    archivePath = FindLocalArchive(packageRoot);
+                }
+                
+                // If still not found, try to download
+                if (string.IsNullOrEmpty(archivePath))
+                {
+                    logger.LogMessage("No cached archive found. Downloading platform-specific binary...");
+                    archivePath = await DownloadBinaryArchiveAsync();
+                }
+
+                if (string.IsNullOrEmpty(archivePath))
+                {
+                    logger.LogError("Failed to obtain KnowLang binary archive. Please check your internet connection or ensure the package is properly installed.");
                     return false;
                 }
 
@@ -205,7 +224,20 @@ namespace UnityKnowLang.Editor
             return null;
         }
 
-        private string FindBinaryArchive(string packageRoot)
+        private string FindCachedArchive()
+        {
+            string cacheDir = GetCacheDirectory();
+            if (!Directory.Exists(cacheDir))
+                return null;
+
+            string platformName = platformHelper.GetPlatformName();
+            string expectedFilename = $"knowlang-v{knowlangConfig.packageVersion}-{platformName}.tar.gz";
+            string cachedPath = Path.Combine(cacheDir, expectedFilename);
+
+            return File.Exists(cachedPath) ? cachedPath : null;
+        }
+
+        private string FindLocalArchive(string packageRoot)
         {
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
             
@@ -227,6 +259,139 @@ namespace UnityKnowLang.Editor
                 logger.LogMessage($"No platform-specific archive found in: {streamingAssetsPath} for pattern: {searchPattern}");
                 return null;
             }
+        }
+
+        private async Task<string> DownloadBinaryArchiveAsync()
+        {
+            try
+            {
+                string platformName = platformHelper.GetPlatformName();
+                string filename = $"knowlang-v{knowlangConfig.packageVersion}-{platformName}.tar.gz";
+                
+                // First, get the release info to find the download URL
+                string releaseUrl = await GetReleaseDownloadUrlAsync(filename);
+                if (string.IsNullOrEmpty(releaseUrl))
+                {
+                    logger.LogError($"Could not find download URL for {filename}");
+                    return null;
+                }
+
+                // Download to cache directory
+                string cacheDir = GetCacheDirectory();
+                Directory.CreateDirectory(cacheDir);
+                
+                string cachedPath = Path.Combine(cacheDir, filename);
+                
+                logger.LogMessage($"Downloading {filename} from GitHub releases...");
+                bool downloadSuccess = await DownloadFileAsync(releaseUrl, cachedPath);
+                
+                if (downloadSuccess)
+                {
+                    logger.LogMessage($"✅ Successfully downloaded {filename}");
+                    return cachedPath;
+                }
+                else
+                {
+                    logger.LogError($"Failed to download {filename}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Download failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task<string> GetReleaseDownloadUrlAsync(string filename)
+        {
+            try
+            {
+                string apiUrl = $"{GITHUB_RELEASES_API}/{knowlangConfig.githubRepository}/releases/tags/v{knowlangConfig.packageVersion}";
+                
+                using (var request = UnityWebRequest.Get(apiUrl))
+                {
+                    request.timeout = knowlangConfig.apiTimeoutSeconds;
+                    var operation = request.SendWebRequest();
+                    
+                    while (!operation.isDone)
+                    {
+                        await Task.Yield();
+                    }
+
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        var releaseInfo = JsonUtility.FromJson<GitHubRelease>(request.downloadHandler.text);
+                        
+                        // Find the asset with matching name
+                        foreach (var asset in releaseInfo.assets)
+                        {
+                            if (asset.name == filename)
+                            {
+                                return asset.browser_download_url;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        logger.LogError($"Failed to fetch release info: {request.error}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Error getting release download URL: {ex.Message}");
+            }
+            
+            return null;
+        }
+
+        private async Task<bool> DownloadFileAsync(string url, string destinationPath)
+        {
+            try
+            {
+                using (var request = UnityWebRequest.Get(url))
+                {
+                    request.timeout = knowlangConfig.downloadTimeoutSeconds;
+                    var operation = request.SendWebRequest();
+                    
+                    // Show progress
+                    float lastProgress = 0;
+                    while (!operation.isDone)
+                    {
+                        if (request.downloadProgress > lastProgress + 0.1f) // Update every 10%
+                        {
+                            lastProgress = request.downloadProgress;
+                            logger.LogMessage($"Download progress: {request.downloadProgress * 100:F1}%");
+                        }
+                        await Task.Delay(100);
+                    }
+
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        // Write the downloaded data to file
+                        File.WriteAllBytes(destinationPath, request.downloadHandler.data);
+                        return true;
+                    }
+                    else
+                    {
+                        logger.LogError($"Download failed: {request.error}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Download exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        private string GetCacheDirectory()
+        {
+            // Use Unity's Library folder for caching
+            string projectRoot = Path.GetDirectoryName(Application.dataPath);
+            return Path.Combine(projectRoot, "Library", "KnowLangCache");
         }
 
         private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string packageRoot)
@@ -896,7 +1061,7 @@ namespace UnityKnowLang.Editor
         {
             var args = new List<string>
             {
-                $"--server.port={Port}",
+                $"--port={Port}",
             };
 
             return string.Join(" ", args);  
@@ -908,6 +1073,23 @@ namespace UnityKnowLang.Editor
     {
         public string status;
         public string service;
+    }
+
+    // Supporting data structures for GitHub API
+    [Serializable]
+    public class GitHubRelease
+    {
+        public string tag_name;
+        public string name;
+        public GitHubAsset[] assets;
+    }
+
+    [Serializable]
+    public class GitHubAsset
+    {
+        public string name;
+        public string browser_download_url;
+        public int size;
     }
     #endregion
 }

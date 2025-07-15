@@ -175,34 +175,6 @@ namespace UnityKnowLang.Editor
         }
         #endregion
 
-        #region Platform Utility Methods
-        private string GetCurrentPlatform()
-        {
-            #if UNITY_EDITOR_WIN
-                return "Windows";
-            #elif UNITY_EDITOR_OSX
-                return "macOS";
-            #elif UNITY_EDITOR_LINUX
-                return "Linux";
-            #else
-                return "Unknown";
-            #endif
-        }
-        
-        private string GetServiceExecutableName()
-        {
-            #if UNITY_EDITOR_WIN
-                return "knowlang-unity-service.exe";
-            #elif UNITY_EDITOR_OSX
-                return "knowlang-unity-service";
-            #elif UNITY_EDITOR_LINUX
-                return "knowlang-unity-service";
-            #else
-                return "knowlang-unity-service";
-            #endif
-        }
-        #endregion
-
         #region Settings Data Binding
         private void BindSettingsToUI()
         {
