@@ -176,14 +176,7 @@ namespace UnityKnowLang.Editor
 
                 logger.LogMessage("KnowLang binaries not found. Checking for cached archive...");
 
-                // Look for cached archive first
-                string archivePath = FindCachedArchive();
-                
-                // If not cached, try local StreamingAssets (for backward compatibility)
-                if (string.IsNullOrEmpty(archivePath))
-                {
-                    archivePath = FindLocalArchive(packageRoot);
-                }
+                string archivePath = FindLocalArchive(packageRoot);
                 
                 // If still not found, try to download
                 if (string.IsNullOrEmpty(archivePath))
@@ -222,19 +215,6 @@ namespace UnityKnowLang.Editor
 
             logger.LogError($"Service executable not found at: {targetPath}");
             return null;
-        }
-
-        private string FindCachedArchive()
-        {
-            string cacheDir = GetCacheDirectory();
-            if (!Directory.Exists(cacheDir))
-                return null;
-
-            string platformName = platformHelper.GetPlatformName();
-            string expectedFilename = $"knowlang-v{knowlangConfig.packageVersion}-{platformName}.tar.gz";
-            string cachedPath = Path.Combine(cacheDir, expectedFilename);
-
-            return File.Exists(cachedPath) ? cachedPath : null;
         }
 
         private string FindLocalArchive(string packageRoot)
@@ -276,19 +256,16 @@ namespace UnityKnowLang.Editor
                     return null;
                 }
 
-                // Download to cache directory
-                string cacheDir = GetCacheDirectory();
-                Directory.CreateDirectory(cacheDir);
-                
-                string cachedPath = Path.Combine(cacheDir, filename);
+                string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(platformHelper.GetPackageRoot());
+                string filePath = Path.Combine(streamingAssetsPath, filename);
                 
                 logger.LogMessage($"Downloading {filename} from GitHub releases...");
-                bool downloadSuccess = await DownloadFileAsync(releaseUrl, cachedPath);
+                bool downloadSuccess = await DownloadFileAsync(releaseUrl, filePath);
                 
                 if (downloadSuccess)
                 {
                     logger.LogMessage($"✅ Successfully downloaded {filename}");
-                    return cachedPath;
+                    return filePath;
                 }
                 else
                 {
@@ -387,13 +364,6 @@ namespace UnityKnowLang.Editor
             }
         }
 
-        private string GetCacheDirectory()
-        {
-            // Use Unity's Library folder for caching
-            string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            return Path.Combine(projectRoot, "Library", "KnowLangCache");
-        }
-
         private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string packageRoot)
         {
             try
@@ -410,27 +380,9 @@ namespace UnityKnowLang.Editor
                 }
                 Directory.CreateDirectory(extractionTarget);
 
-                // Extract using platform-specific commands
-                bool success = await ExtractArchiveNative(archivePath, extractionTarget);
-                
-                if (!success)
-                {
-                    logger.LogError("Native extraction failed. Please ensure tar command is available on your system.");
-                    return false;
-                }
+                await Task.Run(() => RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractionTarget}\""));
 
-                // Verify extraction
-                string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
-                if (File.Exists(targetBinaryPath))
-                {
-                    logger.LogMessage($"✅ Successfully extracted KnowLang binaries to: {extractionTarget}");
-                    return true;
-                }
-                else
-                {
-                    logger.LogError($"Extraction completed but binary not found at expected location: {targetBinaryPath}");
-                    return false;
-                }
+                return true;
             }
             catch (Exception ex)
             {
@@ -439,115 +391,35 @@ namespace UnityKnowLang.Editor
             }
         }
 
-        private async Task<bool> ExtractArchiveNative(string archivePath, string extractPath)
+        private void RunCommand(string command, string arguments)
         {
-            try
+            var processInfo = new ProcessStartInfo
             {
-                return await Task.Run(() =>
-                {
-#if UNITY_EDITOR_WIN
-                    return ExtractOnWindows(archivePath, extractPath);
-#elif UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-                    return ExtractOnUnix(archivePath, extractPath);
-#else
-                    logger.LogError("Unsupported platform for native extraction");
-                    return false;
-#endif
-                });
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Native extraction failed: {ex.Message}");
-                return false;
-            }
-        }
+                FileName = command,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
 
-#if UNITY_EDITOR_WIN
-        private bool ExtractOnWindows(string archivePath, string extractPath)
-        {
-            try
+            using (var process = new Process { StartInfo = processInfo })
             {
-                // Try Windows 10+ built-in tar first
-                if (RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\""))
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
                 {
-                    logger.LogMessage("✅ Extracted using Windows built-in tar");
-                    return true;
+                    if (!string.IsNullOrEmpty(output))
+                        logger.LogMessage($"Command output: {output}");
                 }
-
-                logger.LogError("Windows extraction failed. Please ensure you're using Windows 10+ which supports tar command natively.");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Windows extraction failed: {ex.Message}");
-                return false;
-            }
-        }
-#endif
-
-#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-        private bool ExtractOnUnix(string archivePath, string extractPath)
-        {
-            try
-            {
-                // Use tar command - handles symlinks perfectly
-                bool success = RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\"");
-                
-                if (success)
+                else
                 {
-                    logger.LogMessage("✅ Extracted using Unix tar (symlinks preserved)");
-                    return true;
+                    logger.LogError($"Command failed (exit code {process.ExitCode}): {error}");
+                    throw new Exception($"Command '{command} {arguments}' failed with exit code {process.ExitCode}: {error}");
                 }
-
-                logger.LogError("tar command failed");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Unix extraction failed: {ex.Message}");
-                return false;
-            }
-        }
-#endif
-
-        private bool RunCommand(string command, string arguments)
-        {
-            try
-            {
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = command,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using (var process = new Process { StartInfo = processInfo })
-                {
-                    process.Start();
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-                    process.WaitForExit();
-
-                    if (process.ExitCode == 0)
-                    {
-                        if (!string.IsNullOrEmpty(output))
-                            logger.LogMessage($"Command output: {output}");
-                        return true;
-                    }
-                    else
-                    {
-                        logger.LogError($"Command failed (exit code {process.ExitCode}): {error}");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to run command '{command} {arguments}': {ex.Message}");
-                return false;
             }
         }
     }
