@@ -289,27 +289,42 @@ namespace UnityKnowLang.Editor
                 request.timeout = knowlangConfig.downloadTimeoutSeconds;
                 var operation = request.SendWebRequest();
                 
-                // Show progress
+                // Show progress with Unity's progress bar
                 float lastProgress = 0;
-                while (!operation.isDone)
+                string filename = Path.GetFileName(destinationPath);
+                
+                try
                 {
-                    if (request.downloadProgress > lastProgress + 0.1f) // Update every 10%
+                    while (!operation.isDone)
                     {
-                        lastProgress = request.downloadProgress;
-                        logger.LogMessage($"Download progress: {request.downloadProgress * 100:F1}%");
+                        float currentProgress = request.downloadProgress;
+                        if (currentProgress > lastProgress + 0.01f) // Update more frequently for smoother UI
+                        {
+                            lastProgress = currentProgress;
+                            string progressText = $"Downloading {filename}... {currentProgress * 100:F1}%";
+                            EditorUtility.DisplayProgressBar("KnowLang Setup", progressText, currentProgress);
+                            logger.LogMessage($"Download progress: {currentProgress * 100:F1}%");
+                        }
+                        await Task.Delay(50); // Reduced delay for more responsive UI
                     }
-                    await Task.Delay(100);
-                }
 
-                if (request.result == UnityWebRequest.Result.Success)
-                {
-                    // Write the downloaded data to file
-                    File.WriteAllBytes(destinationPath, request.downloadHandler.data);
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        EditorUtility.DisplayProgressBar("KnowLang Setup", "Saving downloaded file...", 1.0f);
+                        // Write the downloaded data to file
+                        File.WriteAllBytes(destinationPath, request.downloadHandler.data);
+                        logger.LogMessage("Download completed successfully");
+                    }
+                    else
+                    {
+                        logger.LogError($"Download failed: {request.error}");
+                        throw new Exception($"Download failed with status {request.result}: {request.error}");
+                    }
                 }
-                else
+                finally
                 {
-                    logger.LogError($"Download failed: {request.error}");
-                    throw new Exception($"Download failed with status {request.result}: {request.error}");
+                    // Always clear the progress bar
+                    EditorUtility.ClearProgressBar();
                 }
             }
         }
@@ -319,6 +334,9 @@ namespace UnityKnowLang.Editor
             try
             {
                 logger.LogMessage($"Extracting KnowLang binaries from: {archivePath}");
+                
+                // Show extraction progress
+                EditorUtility.DisplayProgressBar("KnowLang Setup", "Extracting binaries...", 0.5f);
 
                 string extractionTarget = Path.Combine(packageRoot, ".knowlang");
 
@@ -332,12 +350,20 @@ namespace UnityKnowLang.Editor
 
                 await Task.Run(() => RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractionTarget}\""));
 
+                EditorUtility.DisplayProgressBar("KnowLang Setup", "Extraction completed!", 1.0f);
+                await Task.Delay(500); // Brief pause to show completion
+                
                 return true;
             }
             catch (Exception ex)
             {
                 logger.LogError($"Failed to extract binary archive: {ex.Message}");
                 return false;
+            }
+            finally
+            {
+                // Always clear the progress bar
+                EditorUtility.ClearProgressBar();
             }
         }
 
