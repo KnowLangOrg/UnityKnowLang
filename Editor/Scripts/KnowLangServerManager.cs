@@ -44,6 +44,8 @@ namespace UnityKnowLang.Editor
 #endif
         }
 
+        public string PlatformArchiveFile => $"knowlang-unity-{GetPlatformName()}-latest.tar.gz";
+
         public string GetPackageRoot()
         {
             // Try to find the package root by looking for package.json
@@ -79,13 +81,10 @@ namespace UnityKnowLang.Editor
             // In Editor, check both package locations
             string packageStreamingAssets = Path.Combine(packageRoot, "StreamingAssets");
 
-            if (Directory.Exists(packageStreamingAssets))
-            {
-                return packageStreamingAssets;
-            }
-
-            // Fallback to Unity's default StreamingAssets
-            return Path.Combine(Application.dataPath, "StreamingAssets");
+            if (!Directory.Exists(packageStreamingAssets))
+                Directory.CreateDirectory(packageStreamingAssets);
+            
+            return packageStreamingAssets;
         }
 
         public string GetTargetBinaryPath(string packageRoot)
@@ -109,7 +108,9 @@ namespace UnityKnowLang.Editor
         {
             try
             {
-                string logFilePath = Path.Combine(logDirectory, "log.txt");
+                string logFilePath = Path.Combine(logDirectory, ".log");
+                if (!Directory.Exists(logDirectory))
+                    Directory.CreateDirectory(logDirectory);
                 logFileWriter = new StreamWriter(logFilePath, append: true) { AutoFlush = true };
             }
             catch (Exception ex)
@@ -142,53 +143,57 @@ namespace UnityKnowLang.Editor
 
     #region Binary Manager
     /// <summary>
-    /// Manages KnowLang binary extraction and availability
+    /// Manages KnowLang binary extraction and availability with download-on-demand capability
     /// </summary>
     public class KnowLangBinaryManager
     {
         private readonly KnowLangPlatformHelper platformHelper;
         private readonly KnowLangLogger logger;
+        
+        // Configuration for GitHub releases
+        private const string GITHUB_RELEASES_API = "https://api.github.com/repos";
+        private KnowLangConfig knowlangConfig;
 
         public KnowLangBinaryManager(KnowLangPlatformHelper platformHelper, KnowLangLogger logger)
         {
             this.platformHelper = platformHelper;
             this.logger = logger;
+            this.knowlangConfig = new KnowLangConfig();
         }
 
         public async Task<bool> EnsureBinariesAsync()
         {
-            try
+            string packageRoot = platformHelper.GetPackageRoot();
+            string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
+            
+            // Check if binaries already exist
+            if (File.Exists(targetBinaryPath))
             {
-                string packageRoot = platformHelper.GetPackageRoot();
-                string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
-                
-                // Check if binaries already exist (e.g., from UPM with .knowlang folder)
-                if (File.Exists(targetBinaryPath))
-                {
-                    logger.LogMessage($"✅ KnowLang binaries found at: {targetBinaryPath}");
-                    return true;
-                }
-
-                logger.LogMessage("KnowLang binaries not found. Checking for archive in StreamingAssets...");
-
-                // Look for archive in StreamingAssets
-                string archivePath = FindBinaryArchive(packageRoot);
-                if (string.IsNullOrEmpty(archivePath))
-                {
-                    logger.LogError("No KnowLang binary archive found in StreamingAssets. Please ensure the package is properly installed.");
-                    return false;
-                }
-
-                logger.LogMessage($"Found binary archive: {archivePath}");
-
-                // Extract the archive
-                return await ExtractBinaryArchiveAsync(archivePath, packageRoot);
+                logger.LogMessage($"✅ KnowLang binaries found at: {targetBinaryPath}");
+                return true;
             }
-            catch (Exception ex)
+
+            logger.LogMessage("KnowLang binaries not found. Checking for cached archive...");
+
+            string archivePath = FindLocalArchive(packageRoot);
+            
+            // If still not found, try to download
+            if (string.IsNullOrEmpty(archivePath))
             {
-                logger.LogError($"Error ensuring binaries: {ex.Message}");
+                logger.LogMessage("No cached archive found. Downloading platform-specific binary...");
+                archivePath = await DownloadBinaryArchiveAsync();
+            }
+
+            if (string.IsNullOrEmpty(archivePath))
+            {
+                logger.LogError("Failed to obtain KnowLang binary archive. Please check your internet connection or ensure the package is properly installed.");
                 return false;
             }
+
+            logger.LogMessage($"Found binary archive: {archivePath}");
+
+            // Extract the archive
+            return await ExtractBinaryArchiveAsync(archivePath, packageRoot);
         }
 
         public string FindServiceExecutable()
@@ -205,27 +210,107 @@ namespace UnityKnowLang.Editor
             return null;
         }
 
-        private string FindBinaryArchive(string packageRoot)
+        private string FindLocalArchive(string packageRoot)
         {
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
+            string localArchive = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveFile);
             
-            if (!Directory.Exists(streamingAssetsPath))
+            if (File.Exists(localArchive))
             {
-                logger.LogMessage($"StreamingAssets directory not found: {streamingAssetsPath}");
+                logger.LogMessage($"Found local archive: {localArchive}");
+                return localArchive;
+            }
+
+            return null;
+        }
+
+        private async Task<string> DownloadBinaryArchiveAsync()
+        {
+            string filename = platformHelper.PlatformArchiveFile;
+
+            // First, get the release info to find the download URL
+            string releaseUrl = await GetReleaseDownloadUrlAsync(filename);
+            if (string.IsNullOrEmpty(releaseUrl))
+            {
+                logger.LogError($"Could not find download URL for {filename}");
                 return null;
             }
 
-            string searchPattern = $"knowlang*{platformHelper.GetPlatformName()}*.tar.gz";
-            string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, searchPattern);
+            string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(platformHelper.GetPackageRoot());
+            string filePath = Path.Combine(streamingAssetsPath, filename);
 
-            if (matchingFiles.Length > 0)
+            logger.LogMessage($"Downloading {filename} from GitHub releases...");
+            await DownloadFileAsync(releaseUrl, filePath);
+
+            return filePath;
+        }
+
+        private async Task<string> GetReleaseDownloadUrlAsync(string filename)
+        {
+            string apiUrl = $"{GITHUB_RELEASES_API}/{knowlangConfig.githubRepository}/releases/tags/v{knowlangConfig.packageVersion}";
+
+            using (var request = UnityWebRequest.Get(apiUrl))
             {
-                return matchingFiles[0]; // Return first match
-            }
-            else
-            {
-                logger.LogMessage($"No platform-specific archive found in: {streamingAssetsPath} for pattern: {searchPattern}");
+                request.timeout = knowlangConfig.apiTimeoutSeconds;
+                var operation = request.SendWebRequest();
+
+                while (!operation.isDone)
+                {
+                    await Task.Yield();
+                }
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    var releaseInfo = JsonUtility.FromJson<GitHubRelease>(request.downloadHandler.text);
+
+                    // Find the asset with matching name
+                    foreach (var asset in releaseInfo.assets)
+                    {
+                        if (asset.name == filename)
+                        {
+                            return asset.browser_download_url;
+                        }
+                    }
+                }
+                else
+                {
+                    logger.LogError($"Failed to fetch release info: {request.error}");
+                    throw new Exception($"GitHub API request failed with status {request.result}: {request.error}");
+                }
+
                 return null;
+            }
+        }
+
+        private async Task DownloadFileAsync(string url, string destinationPath)
+        {
+            using (var request = UnityWebRequest.Get(url))
+            {
+                request.timeout = knowlangConfig.downloadTimeoutSeconds;
+                var operation = request.SendWebRequest();
+                
+                // Show progress
+                float lastProgress = 0;
+                while (!operation.isDone)
+                {
+                    if (request.downloadProgress > lastProgress + 0.1f) // Update every 10%
+                    {
+                        lastProgress = request.downloadProgress;
+                        logger.LogMessage($"Download progress: {request.downloadProgress * 100:F1}%");
+                    }
+                    await Task.Delay(100);
+                }
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    // Write the downloaded data to file
+                    File.WriteAllBytes(destinationPath, request.downloadHandler.data);
+                }
+                else
+                {
+                    logger.LogError($"Download failed: {request.error}");
+                    throw new Exception($"Download failed with status {request.result}: {request.error}");
+                }
             }
         }
 
@@ -245,27 +330,9 @@ namespace UnityKnowLang.Editor
                 }
                 Directory.CreateDirectory(extractionTarget);
 
-                // Extract using platform-specific commands
-                bool success = await ExtractArchiveNative(archivePath, extractionTarget);
-                
-                if (!success)
-                {
-                    logger.LogError("Native extraction failed. Please ensure tar command is available on your system.");
-                    return false;
-                }
+                await Task.Run(() => RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractionTarget}\""));
 
-                // Verify extraction
-                string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
-                if (File.Exists(targetBinaryPath))
-                {
-                    logger.LogMessage($"✅ Successfully extracted KnowLang binaries to: {extractionTarget}");
-                    return true;
-                }
-                else
-                {
-                    logger.LogError($"Extraction completed but binary not found at expected location: {targetBinaryPath}");
-                    return false;
-                }
+                return true;
             }
             catch (Exception ex)
             {
@@ -274,115 +341,35 @@ namespace UnityKnowLang.Editor
             }
         }
 
-        private async Task<bool> ExtractArchiveNative(string archivePath, string extractPath)
+        private void RunCommand(string command, string arguments)
         {
-            try
+            var processInfo = new ProcessStartInfo
             {
-                return await Task.Run(() =>
-                {
-#if UNITY_EDITOR_WIN
-                    return ExtractOnWindows(archivePath, extractPath);
-#elif UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-                    return ExtractOnUnix(archivePath, extractPath);
-#else
-                    logger.LogError("Unsupported platform for native extraction");
-                    return false;
-#endif
-                });
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Native extraction failed: {ex.Message}");
-                return false;
-            }
-        }
+                FileName = command,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
 
-#if UNITY_EDITOR_WIN
-        private bool ExtractOnWindows(string archivePath, string extractPath)
-        {
-            try
+            using (var process = new Process { StartInfo = processInfo })
             {
-                // Try Windows 10+ built-in tar first
-                if (RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\""))
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
                 {
-                    logger.LogMessage("✅ Extracted using Windows built-in tar");
-                    return true;
+                    if (!string.IsNullOrEmpty(output))
+                        logger.LogMessage($"Command output: {output}");
                 }
-
-                logger.LogError("Windows extraction failed. Please ensure you're using Windows 10+ which supports tar command natively.");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Windows extraction failed: {ex.Message}");
-                return false;
-            }
-        }
-#endif
-
-#if UNITY_EDITOR_OSX || UNITY_EDITOR_LINUX
-        private bool ExtractOnUnix(string archivePath, string extractPath)
-        {
-            try
-            {
-                // Use tar command - handles symlinks perfectly
-                bool success = RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractPath}\"");
-                
-                if (success)
+                else
                 {
-                    logger.LogMessage("✅ Extracted using Unix tar (symlinks preserved)");
-                    return true;
+                    logger.LogError($"Command failed (exit code {process.ExitCode}): {error}");
+                    throw new Exception($"Command '{command} {arguments}' failed with exit code {process.ExitCode}: {error}");
                 }
-
-                logger.LogError("tar command failed");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Unix extraction failed: {ex.Message}");
-                return false;
-            }
-        }
-#endif
-
-        private bool RunCommand(string command, string arguments)
-        {
-            try
-            {
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = command,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using (var process = new Process { StartInfo = processInfo })
-                {
-                    process.Start();
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-                    process.WaitForExit();
-
-                    if (process.ExitCode == 0)
-                    {
-                        if (!string.IsNullOrEmpty(output))
-                            logger.LogMessage($"Command output: {output}");
-                        return true;
-                    }
-                    else
-                    {
-                        logger.LogError($"Command failed (exit code {process.ExitCode}): {error}");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to run command '{command} {arguments}': {ex.Message}");
-                return false;
             }
         }
     }
@@ -605,6 +592,8 @@ namespace UnityKnowLang.Editor
             // Subscribe to Unity events
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+
+            logger.Initialize(platformHelper.GetPackageRoot());
         }
 
         public void Dispose()
@@ -637,6 +626,7 @@ namespace UnityKnowLang.Editor
 
             try
             {
+
                 SetStatus(ServiceStatus.Starting);
                 logger.LogMessage("Starting KnowLang Python service...");
 
@@ -657,8 +647,6 @@ namespace UnityKnowLang.Editor
                     return false;
                 }
 
-                // Initialize logger with the executable directory
-                logger.Initialize(Path.GetDirectoryName(executablePath));
 
                 // Configure the YAML files before starting the service
                 var configManager = new KnowLangConfigManager();
@@ -896,7 +884,7 @@ namespace UnityKnowLang.Editor
         {
             var args = new List<string>
             {
-                $"--server.port={Port}",
+                $"--port={Port}",
             };
 
             return string.Join(" ", args);  
@@ -908,6 +896,23 @@ namespace UnityKnowLang.Editor
     {
         public string status;
         public string service;
+    }
+
+    // Supporting data structures for GitHub API
+    [Serializable]
+    public class GitHubRelease
+    {
+        public string tag_name;
+        public string name;
+        public GitHubAsset[] assets;
+    }
+
+    [Serializable]
+    public class GitHubAsset
+    {
+        public string name;
+        public string browser_download_url;
+        public int size;
     }
     #endregion
 }
