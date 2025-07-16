@@ -810,7 +810,7 @@ namespace UnityKnowLang.Editor
             var configPaths = new List<string>();
 
             // Check in the same directory as the executable
-            string configPath = Path.Combine(executableDir, "_internal", "settings", "assets");
+            string configPath = Path.Combine(executableDir, "_internal", "settings");
             if (Directory.Exists(configPath))
             {
                 // Support both .yaml and .yml extensions using multiple patterns
