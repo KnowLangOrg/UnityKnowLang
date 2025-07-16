@@ -7,7 +7,7 @@ namespace UnityKnowLang.Editor
     {
         public string githubRepository = "KnowLangOrg/know-lang";
         
-        public string packageVersion = "0.3.0";
+        public string packageVersion = "0.3.1";
         
         public int apiTimeoutSeconds = 10;
         
