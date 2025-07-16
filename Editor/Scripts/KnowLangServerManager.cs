@@ -44,6 +44,8 @@ namespace UnityKnowLang.Editor
 #endif
         }
 
+        public string PlatformArchiveFile => $"knowlang-unity-{GetPlatformName()}-latest.tar.gz";
+
         public string GetPackageRoot()
         {
             // Try to find the package root by looking for package.json
@@ -106,7 +108,9 @@ namespace UnityKnowLang.Editor
         {
             try
             {
-                string logFilePath = Path.Combine(logDirectory, "log.txt");
+                string logFilePath = Path.Combine(logDirectory, ".log");
+                if (!Directory.Exists(logDirectory))
+                    Directory.CreateDirectory(logDirectory);
                 logFileWriter = new StreamWriter(logFilePath, append: true) { AutoFlush = true };
             }
             catch (Exception ex)
@@ -209,31 +213,20 @@ namespace UnityKnowLang.Editor
         private string FindLocalArchive(string packageRoot)
         {
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
+            string localArchive = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveFile);
             
-            if (!Directory.Exists(streamingAssetsPath))
+            if (File.Exists(localArchive))
             {
-                logger.LogMessage($"StreamingAssets directory not found: {streamingAssetsPath}");
-                return null;
+                logger.LogMessage($"Found local archive: {localArchive}");
+                return localArchive;
             }
 
-            string searchPattern = $"knowlang*{platformHelper.GetPlatformName()}*.tar.gz";
-            string[] matchingFiles = Directory.GetFiles(streamingAssetsPath, searchPattern);
-
-            if (matchingFiles.Length > 0)
-            {
-                return matchingFiles[0]; // Return first match
-            }
-            else
-            {
-                logger.LogMessage($"No platform-specific archive found in: {streamingAssetsPath} for pattern: {searchPattern}");
-                return null;
-            }
+            return null;
         }
 
         private async Task<string> DownloadBinaryArchiveAsync()
         {
-            string platformName = platformHelper.GetPlatformName();
-            string filename = $"knowlang-v{knowlangConfig.packageVersion}-{platformName}.tar.gz";
+            string filename = platformHelper.PlatformArchiveFile;
 
             // First, get the release info to find the download URL
             string releaseUrl = await GetReleaseDownloadUrlAsync(filename);
@@ -599,6 +592,8 @@ namespace UnityKnowLang.Editor
             // Subscribe to Unity events
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+
+            logger.Initialize(platformHelper.GetPackageRoot());
         }
 
         public void Dispose()
@@ -631,6 +626,7 @@ namespace UnityKnowLang.Editor
 
             try
             {
+
                 SetStatus(ServiceStatus.Starting);
                 logger.LogMessage("Starting KnowLang Python service...");
 
@@ -651,8 +647,6 @@ namespace UnityKnowLang.Editor
                     return false;
                 }
 
-                // Initialize logger with the executable directory
-                logger.Initialize(Path.GetDirectoryName(executablePath));
 
                 // Configure the YAML files before starting the service
                 var configManager = new KnowLangConfigManager();
