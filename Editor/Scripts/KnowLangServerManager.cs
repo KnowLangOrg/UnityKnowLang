@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEditor;
+using UnityEditor.PackageManager;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -53,17 +54,18 @@ namespace UnityKnowLang.Editor
             // Try to find the package root by looking for package.json
             string currentDir = Path.GetDirectoryName(Application.dataPath);
 
-            // For UPM packages
-            string[] upmPaths = {
-                Path.Combine(currentDir, "Packages", kPackageName),
-                Path.Combine(currentDir, "Library", "PackageCache", $"{kPackageName}@*")
-            };
+            // First, try using Unity's PackageManager API (most reliable)
+            var listRequest = Client.List(true, false); // offlineMode=true, includeIndirect=false
 
-            foreach (string upmPath in upmPaths)
+            if (listRequest.Status == StatusCode.Success)
             {
-                if (Directory.Exists(upmPath) && File.Exists(Path.Combine(upmPath, "package.json")))
+                foreach (var package in listRequest.Result)
                 {
-                    return upmPath;
+                    if (package.name == kPackageName)
+                    {
+                        // Use the resolved path from PackageManager
+                        return package.resolvedPath;
+                    }
                 }
             }
 
