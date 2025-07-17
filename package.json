@@ -1,6 +1,6 @@
 {
   "name": "dev.knowlang.knowlang",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "displayName": "KnowLang",
   "description": "A Unity plugin that provides centralized knowledge of your game projects",
   "unity": "6000.0",

@@ -5,8 +5,6 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System.Threading.Tasks;
 using System.IO;
-// Add Mixpanel using statement if your MixpanelService is in a different namespace.
-// For this example, assuming MixpanelService is in UnityKnowLang.Editor or globally accessible.
 
 namespace UnityKnowLang.Editor
 {
