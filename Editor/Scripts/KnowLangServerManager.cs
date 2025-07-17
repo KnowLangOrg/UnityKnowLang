@@ -45,6 +45,8 @@ namespace UnityKnowLang.Editor
         }
 
         public string PlatformArchiveFile => $"knowlang-unity-{GetPlatformName()}-latest.tar.gz";
+        // prepend a dot to prevent Unity from creating metadata files
+        public string PlatformArchiveLocalFile => '.' + PlatformArchiveFile;
 
         public string GetPackageRoot()
         {
@@ -213,9 +215,8 @@ namespace UnityKnowLang.Editor
         private string FindLocalArchive(string packageRoot)
         {
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
-            // prepend a dot to prevent Unity from creating metadata files
-            string localArchive = Path.Combine(streamingAssetsPath, '.' + platformHelper.PlatformArchiveFile);
-            
+            string localArchive = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveLocalFile);
+
             if (File.Exists(localArchive))
             {
                 logger.LogMessage($"Found local archive: {localArchive}");
@@ -238,12 +239,12 @@ namespace UnityKnowLang.Editor
             }
 
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(platformHelper.GetPackageRoot());
-            string filePath = Path.Combine(streamingAssetsPath, filename);
+            string localArchivePath = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveLocalFile);
 
-            logger.LogMessage($"Downloading {filename} from GitHub releases...");
-            await DownloadFileAsync(releaseUrl, filePath);
+            logger.LogMessage($"Downloading {filename} from GitHub releases into {localArchivePath}...");
+            await DownloadFileAsync(releaseUrl, localArchivePath);
 
-            return filePath;
+            return localArchivePath;
         }
 
         private async Task<string> GetReleaseDownloadUrlAsync(string filename)
