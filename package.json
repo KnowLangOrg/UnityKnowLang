@@ -9,7 +9,7 @@
   "changelogUrl": "https://github.com/KnowLangOrg/UnityKnowLang/blob/main/CHANGELOG.md",
   "licensesUrl": "https://github.com/KnowLangOrg/UnityKnowLang/blob/main/LICENSE.md",
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
   },
   "keywords": [
     "knowledge",
