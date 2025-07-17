@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -17,7 +16,11 @@ namespace UnityKnowLang.Editor
     /// </summary>
     public class KnowLangPlatformHelper
     {
-        const string kPackageName = "dev.knowlang.knowlang";
+        public KnowLangPlatformHelper()
+        {
+            if (!Directory.Exists(KnowLangCacheDirectory))
+                Directory.CreateDirectory(KnowLangCacheDirectory);
+        }
 
         public string GetPlatformName()
         {
@@ -46,55 +49,13 @@ namespace UnityKnowLang.Editor
         }
 
         public string PlatformArchiveFile => $"knowlang-unity-{GetPlatformName()}-latest.tar.gz";
-        // prepend a dot to prevent Unity from creating metadata files
-        public string PlatformArchiveLocalFile => '.' + PlatformArchiveFile;
 
-        public string GetPackageRoot()
-        {
-            // Try to find the package root by looking for package.json
-            string currentDir = Path.GetDirectoryName(Application.dataPath);
+        public string KnowLangCacheDirectory => Path.Combine(Application.dataPath, ".knowlang");
 
-            // First, try using Unity's PackageManager API (most reliable)
-            var listRequest = Client.List(true, false); // offlineMode=true, includeIndirect=false
-
-            if (listRequest.Status == StatusCode.Success)
-            {
-                foreach (var package in listRequest.Result)
-                {
-                    if (package.name == kPackageName)
-                    {
-                        // Use the resolved path from PackageManager
-                        return package.resolvedPath;
-                    }
-                }
-            }
-
-            // For .unitypackage installation (Assets folder)
-            string assetsPath = Path.Combine(currentDir, "Assets", "UnityKnowLang");
-            if (Directory.Exists(assetsPath))
-            {
-                return assetsPath;
-            }
-
-            // Fallback to Assets/UnityKnowLang
-            return assetsPath;
-        }
-
-        public string GetStreamingAssetsPath(string packageRoot)
-        {
-            // In Editor, check both package locations
-            string packageStreamingAssets = Path.Combine(packageRoot, "StreamingAssets");
-
-            if (!Directory.Exists(packageStreamingAssets))
-                Directory.CreateDirectory(packageStreamingAssets);
-            
-            return packageStreamingAssets;
-        }
-
-        public string GetTargetBinaryPath(string packageRoot)
+        public string GetTargetBinaryPath(string cacheDir)
         {
             string executableName = GetExecutableName();
-            return Path.Combine(packageRoot, ".knowlang", executableName);
+            return Path.Combine(cacheDir, executableName);
         }
     }
     #endregion
@@ -167,9 +128,8 @@ namespace UnityKnowLang.Editor
 
         public async Task<bool> EnsureBinariesAsync()
         {
-            string packageRoot = platformHelper.GetPackageRoot();
-            string targetBinaryPath = platformHelper.GetTargetBinaryPath(packageRoot);
-            
+            string targetBinaryPath = platformHelper.GetTargetBinaryPath(platformHelper.KnowLangCacheDirectory);
+
             // Check if binaries already exist
             if (File.Exists(targetBinaryPath))
             {
@@ -179,8 +139,8 @@ namespace UnityKnowLang.Editor
 
             logger.LogMessage("KnowLang binaries not found. Checking for cached archive...");
 
-            string archivePath = FindLocalArchive(packageRoot);
-            
+            string archivePath = FindLocalArchive(platformHelper.KnowLangCacheDirectory);
+
             // If still not found, try to download
             if (string.IsNullOrEmpty(archivePath))
             {
@@ -197,13 +157,12 @@ namespace UnityKnowLang.Editor
             logger.LogMessage($"Found binary archive: {archivePath}");
 
             // Extract the archive
-            return await ExtractBinaryArchiveAsync(archivePath, packageRoot);
+            return await ExtractBinaryArchiveAsync(archivePath, platformHelper.KnowLangCacheDirectory);
         }
 
         public string FindServiceExecutable()
         {
-            string packageRoot = platformHelper.GetPackageRoot();
-            string targetPath = platformHelper.GetTargetBinaryPath(packageRoot);
+            string targetPath = platformHelper.GetTargetBinaryPath(platformHelper.KnowLangCacheDirectory);
             
             if (File.Exists(targetPath))
             {
@@ -214,10 +173,9 @@ namespace UnityKnowLang.Editor
             return null;
         }
 
-        private string FindLocalArchive(string packageRoot)
+        private string FindLocalArchive(string cacheDir)
         {
-            string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
-            string localArchive = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveLocalFile);
+            string localArchive = Path.Combine(cacheDir, platformHelper.PlatformArchiveFile);
 
             if (File.Exists(localArchive))
             {
@@ -240,8 +198,7 @@ namespace UnityKnowLang.Editor
                 return null;
             }
 
-            string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(platformHelper.GetPackageRoot());
-            string localArchivePath = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveLocalFile);
+            string localArchivePath = Path.Combine(platformHelper.KnowLangCacheDirectory, platformHelper.PlatformArchiveFile);
 
             logger.LogMessage($"Downloading {filename} from GitHub releases into {localArchivePath}...");
             await DownloadFileAsync(releaseUrl, localArchivePath);
@@ -333,7 +290,7 @@ namespace UnityKnowLang.Editor
             }
         }
 
-        private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string packageRoot)
+        private async Task<bool> ExtractBinaryArchiveAsync(string archivePath, string cacheDir)
         {
             try
             {
@@ -342,17 +299,7 @@ namespace UnityKnowLang.Editor
                 // Show extraction progress
                 EditorUtility.DisplayProgressBar("KnowLang Setup", "Extracting binaries...", 0.5f);
 
-                string extractionTarget = Path.Combine(packageRoot, ".knowlang");
-
-                // Create target directory if it doesn't exist
-                if (Directory.Exists(extractionTarget))
-                {
-                    // Clean existing directory to avoid conflicts
-                    Directory.Delete(extractionTarget, true);
-                }
-                Directory.CreateDirectory(extractionTarget);
-
-                await Task.Run(() => RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{extractionTarget}\""));
+                await Task.Run(() => RunCommand("tar", $"-xzf \"{archivePath}\" -C \"{cacheDir}\""));
 
                 EditorUtility.DisplayProgressBar("KnowLang Setup", "Extraction completed!", 1.0f);
                 await Task.Delay(500); // Brief pause to show completion
@@ -623,7 +570,7 @@ namespace UnityKnowLang.Editor
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
 
-            logger.Initialize(platformHelper.GetPackageRoot());
+            logger.Initialize(platformHelper.KnowLangCacheDirectory);
         }
 
         public void Dispose()
