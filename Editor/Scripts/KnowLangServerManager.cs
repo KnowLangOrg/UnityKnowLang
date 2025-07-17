@@ -213,7 +213,8 @@ namespace UnityKnowLang.Editor
         private string FindLocalArchive(string packageRoot)
         {
             string streamingAssetsPath = platformHelper.GetStreamingAssetsPath(packageRoot);
-            string localArchive = Path.Combine(streamingAssetsPath, platformHelper.PlatformArchiveFile);
+            // prepend a dot to prevent Unity from creating metadata files
+            string localArchive = Path.Combine(streamingAssetsPath, '.' + platformHelper.PlatformArchiveFile);
             
             if (File.Exists(localArchive))
             {
