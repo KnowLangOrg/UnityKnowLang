@@ -349,7 +349,7 @@ namespace UnityKnowLang.Editor
 
             try
             {
-                AddSystemMessage("🔄 Starting project parsing...");
+                AddSystemMessage("🔄 Requesting project parsing...");
                 
                 // Send empty object instead of null to satisfy FastAPI's body requirement
                 var result = await serviceClient.PostAsync<object>("/parse", new { });
@@ -357,7 +357,7 @@ namespace UnityKnowLang.Editor
                 // Track Mixpanel Event
                 MixpanelService.TrackParseProjectClicked();
 
-                AddSystemMessage("✅ Project parsing completed successfully!");
+                AddSystemMessage("✅ Requested project parsing successfully!");
                 Debug.Log($"ParseProject: Success - {result}");
             }
             catch (Exception ex)
